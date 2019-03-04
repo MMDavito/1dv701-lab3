@@ -6,8 +6,8 @@ import java.net.SocketException;
 public class TFTPServer {
     public static final int TFTPPORT = 4970;
     public static final int BUFSIZE = 516;
-    public static final String READDIR = "/home/username/read/"; //custom address at your PC
-    public static final String WRITEDIR = "/home/username/write/"; //custom address at your PC
+    public static final String READDIR = "~/LNU_TEMP/read/"; //custom address at your PC
+    public static final String WRITEDIR = "~/LNU_TEMP/write/"; //custom address at your PC
     // OP codes
     public static final int OP_RRQ = 1;
     public static final int OP_WRQ = 2;
