@@ -1,0 +1,43 @@
+Only implementing Byte(octet) mode
+Viewing all trafic as stream of bytes.
+
+2 byte opcodes:(LIST::)
+::
+
+5 types of packets:
+Read and write from client (1&2)
+The 
+
+Block number is used by the receving end to aknowledge the most (3)
+recently receieved valid packet of data.
+
+The error packet is sent when an error occurs and it contains both an error code and an error message(suggested)
+That provides additional details.
+(4)
+
+and finaly datapakcet???
+
+each packet has a size between 0 and 512 bytes, if <512 bytes it is the last packet??
+rfc1350(summary from 
+https://www.ietf.org/rfc/rfc1350.txt
+):
+---------------------------------------
+Request for read/write also serves as request for connection.
+Server eighter 
+Sends data and recieves acks
+OR 
+Sends acks and recieves data
+
+3 types of error events causing termination of connection:
+Not able to satisfy
+Receiving file not expected
+Cock blocked
+
+1 ErrorType not suicide:
+ Source port incorrect.
+This causes reciver to return error package to sender(host?)
+-------
+3: Relation to other protocols:
+
+
+
