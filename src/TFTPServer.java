@@ -1,7 +1,6 @@
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.net.SocketException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.*;
 import java.nio.ByteBuffer;
 
 public class TFTPServer {
@@ -44,7 +43,6 @@ public class TFTPServer {
 
         // Loop to handle client requests
         while (true) {
-
             final InetSocketAddress clientAddress = receiveFrom(socket, buf);
 
             // If clientAddress is null, an error occurred in receiveFrom()
@@ -98,12 +96,18 @@ public class TFTPServer {
      */
     private InetSocketAddress receiveFrom(DatagramSocket socket, byte[] buf) {
         // Create datagram packet
-        InetSocketAddress socketAddress = new InetSocketAddress(socket.getInetAddress(), 0);
+        DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
         // Receive packet
-
+        try {
+            socket.receive(receivePacket);
+        } catch (IOException e) {
+            System.err.println("Error in receiving packet from socket with port: " + socket.getPort() + "\n" + e);
+        }
         // Get client address and port from the packet
+        InetSocketAddress inetSocketAddress = new InetSocketAddress(receivePacket.getAddress(), receivePacket.getPort());
+        System.out.println("This is address from recive: " + inetSocketAddress.toString());
 
-        return socketAddress;
+        return inetSocketAddress;
     }
 
     /**
@@ -128,6 +132,7 @@ public class TFTPServer {
      * @param opcode        (RRQ or WRQ)
      */
     private void HandleRQ(DatagramSocket sendSocket, String requestedFile, int opcode) {
+        System.out.println("Handeling here");
         if (opcode == OP_RRQ) {
             // See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
             boolean result = send_DATA_receive_ACK(sendSocket, requestedFile, OP_DAT);
