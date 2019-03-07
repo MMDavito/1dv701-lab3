@@ -1,11 +1,32 @@
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 
 public class TFTPServer {
     public static final int TFTPPORT = 4970;
     public static final int BUFSIZE = 516;
+    public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
+/*
+--------------------------------------------------------------
+Methods for unsigning stuffz
+ */
+    public static int getUnsignedShort(ByteBuffer bb) {
+        return (bb.getShort() & 0xffff);
+    }
+
+    public static void putUnsignedShort(ByteBuffer bb, int value) {
+        bb.putShort((short) (value & 0xffff));
+    }
+
+    public static int getUnsignedShort(ByteBuffer bb, int position) {
+        return (bb.getShort(position) & 0xffff);
+    }
+
+    public static void putUnsignedShort(ByteBuffer bb, int position, int value) {
+        bb.putShort(position, (short) (value & 0xffff));
+    }
+//------------------------------------------------------------------
+
     public static final String READDIR = "~/TEMP_LNU/read/"; //custom address at your PC
     public static final String WRITEDIR = "~/TEMP_LNU/write/"; //custom address at your PC
     // OP codes
@@ -147,12 +168,73 @@ public class TFTPServer {
     }
 
     /**
-     * To be implemented
+     * TODO To be implemented
      */
-    private boolean send_DATA_receive_ACK(DatagramSocket sendSocket, String requestedFile, int opcode) {
+
+
+    /**
+     * This is response to a RRQ request (read)
+     *
+     * @param sendSocket
+     * @param requestedFile
+     * @param opcode        Remove?
+     * @return
+     */
+    private boolean send_DATA_receive_ACK(DatagramSocket socketAddress, String requestedFile, int opcode) {
+        System.out.println("Replying with data to:");
+        System.out.println(socketAddress.getInetAddress() + ", Using port: " + socketAddress.getPort());
+
+        int blockNum = 1;
+        File file = new File(requestedFile);
+        FileInputStream fileInputStream = null;
+        byte[] returnBuff = new byte[BUFSIZE];
+        byte[] buf = new byte[sizeOfDataField];
+        if (file.isFile()) {
+            try {
+                fileInputStream = new FileInputStream(file);
+                int fileLength = fileInputStream.available();
+                while (fileLength - (sizeOfDataField * blockNum) >= 0) {
+                    fileInputStream.read(buf, sizeOfDataField * (blockNum - 1), sizeOfDataField);
+                    ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
+                    wrap.putShort((short) OP_DAT);
+                    putUnsignedShort(wrap, 2, blockNum);
+                    wrap.put(buf, 4, sizeOfDataField);
+                    DatagramPacket sendPacket =
+                            new DatagramPacket(returnBuff,
+                                    returnBuff.length,
+                                    socketAddress.getInetAddress(),
+                                    socketAddress.getPort());
+
+                    socketAddress.send(sendPacket);
+                    blockNum++;
+                }
+                if (true || (fileLength - (sizeOfDataField * (blockNum - 1))) > 0) {//TODO: Should it always do this?, else remove "TRUE"||
+                    int length = fileLength - (sizeOfDataField * (blockNum - 1));
+                    returnBuff = new byte[length + 4];
+                    buf = new byte[length];
+                    fileInputStream.read(buf, sizeOfDataField * (blockNum - 1), length);
+
+
+                }
+            } catch (Exception e) {//TODO; Resend a error package
+                System.err.println("Is a file but not reachable, should just let this catch handle everything\n" + e);
+            }
+        } else {
+            throw new UnsupportedOperationException("Need to implement this shit, probably return a error message and close connection");
+        }
+
+
         return true;
     }
 
+    /**
+     * This is response to a WRQ request (write)
+     *
+     * @param sendSocket
+     * @param requestedFile
+     * @param opcode
+     * @return
+     */
     private boolean receive_DATA_send_ACK(DatagramSocket sendSocket, String requestedFile, int opcode) {
         return true;
     }

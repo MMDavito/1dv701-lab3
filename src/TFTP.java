@@ -1,9 +1,13 @@
 
 import java.net.DatagramSocket;
+import java.nio.ByteBuffer;
 
 public class TFTP {
-    final short maxBufSize = 512;
+    final short BUFFSIZE = 512;
 
+    /**
+     * Read from server (so server sends data and recieves acknowledgments).
+     */
     class RRQ {
         private final short opcode = 1;
         private String filename;//Is returned in a method bytes->charArr->String
@@ -23,6 +27,14 @@ public class TFTP {
             stringBuilder.append(mode);
             stringBuilder.append(punctuation);
             return stringBuilder.toString();
+        }
+
+        public byte[] toByteArr() {
+            byte[] buf = new byte[BUFFSIZE];
+            ByteBuffer wrap = ByteBuffer.wrap(buf);
+            wrap.putShort()
+            System.out.println(opcode);
+
         }
     }
 
@@ -53,6 +65,7 @@ public class TFTP {
         private int blockNum;
         private byte[] data;
         private boolean hasSent = false;
+        private boolean hasData = false;
 
         public DATA() {
             throw new UnsupportedOperationException("Will fix all");
@@ -63,7 +76,7 @@ public class TFTP {
          * @return 1 if data set, -1 if data was already set (cannot override)
          */
         public int setData(byte[] data) {
-            if (hasSent) {
+            if (!hasSent) {
                 return -1;
             }
             if (data.length > maxBufSize) {
@@ -71,14 +84,16 @@ public class TFTP {
             } else {
                 this.data = data;
                 hasSent = false;
+                hasData = true;
                 return 1;
             }
         }
 
         public int sendData(DatagramSocket socket) {
-            if (hasSent) {
+            if (hasSent || !hasData) {
                 return -1;
             }
+
             return -666;
         }
 
