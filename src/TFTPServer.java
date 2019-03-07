@@ -2,6 +2,7 @@ import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.SocketException;
+import java.nio.ByteBuffer;
 
 public class TFTPServer {
     public static final int TFTPPORT = 4970;
@@ -50,9 +51,13 @@ public class TFTPServer {
             if (clientAddress == null)
                 continue;
 
+            System.out.println("Client: " + clientAddress);
+
+//TODO, Thread it from here. BUT first, make it work with one client.
+
             final StringBuffer requestedFile = new StringBuffer();
             final int reqtype = ParseRQ(buf, requestedFile);
-
+//TODO WTF There is a thread here already?
             new Thread() {
                 public void run() {
                     try {
@@ -63,7 +68,7 @@ public class TFTPServer {
 
                         System.out.printf("%s request for %s from %s using port %d\n",
                                 (reqtype == OP_RRQ) ? "Read" : "Write",
-                                clientAddress.getHostName(), clientAddress.getPort());
+                                sendSocket.getInetAddress(), clientAddress.getHostName(), clientAddress.getPort());
 
                         // Read request
                         if (reqtype == OP_RRQ) {
@@ -93,7 +98,7 @@ public class TFTPServer {
      */
     private InetSocketAddress receiveFrom(DatagramSocket socket, byte[] buf) {
         // Create datagram packet
-InetSocketAddress
+        InetSocketAddress socketAddress = new InetSocketAddress(socket.getInetAddress(), 0);
         // Receive packet
 
         // Get client address and port from the packet
@@ -108,9 +113,10 @@ InetSocketAddress
      * @param requestedFile (name of file to read/write)
      * @return opcode (request type: RRQ or WRQ)
      */
-    private int ParseRQ(byte[] buf, StringBuffer requestedFile) {
+    private short ParseRQ(byte[] buf, StringBuffer requestedFile) {
         // See "TFTP Formats" in TFTP specification for the RRQ/WRQ request contents
-
+        ByteBuffer wrap = ByteBuffer.wrap(buf);
+        short opcode = wrap.getShort();
         return opcode;
     }
 
@@ -124,13 +130,13 @@ InetSocketAddress
     private void HandleRQ(DatagramSocket sendSocket, String requestedFile, int opcode) {
         if (opcode == OP_RRQ) {
             // See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
-            boolean result = send_DATA_receive_ACK(params);
+            boolean result = send_DATA_receive_ACK(sendSocket, requestedFile, OP_DAT);
         } else if (opcode == OP_WRQ) {
-            boolean result = receive_DATA_send_ACK(params);
+            boolean result = receive_DATA_send_ACK(sendSocket, requestedFile, OP_ACK);
         } else {
             System.err.println("Invalid request. Sending an error packet.");
             // See "TFTP Formats" in TFTP specification for the ERROR packet contents
-            send_ERR(params);
+            send_ERR(sendSocket, requestedFile, OP_ERR);
             return;
         }
     }
@@ -138,15 +144,15 @@ InetSocketAddress
     /**
      * To be implemented
      */
-    private boolean send_DATA_receive_ACK(params) {
+    private boolean send_DATA_receive_ACK(DatagramSocket sendSocket, String requestedFile, int opcode) {
         return true;
     }
 
-    private boolean receive_DATA_send_ACK(params) {
+    private boolean receive_DATA_send_ACK(DatagramSocket sendSocket, String requestedFile, int opcode) {
         return true;
     }
 
-    private void send_ERR(params) {
+    private void send_ERR(DatagramSocket sendSocket, String requestedFile, int opcode) {
     }
 
 }

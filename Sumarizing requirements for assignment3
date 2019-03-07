@@ -38,6 +38,42 @@ Cock blocked
 This causes reciver to return error package to sender(host?)
 -------
 3: Relation to other protocols:
+IT IS UDP and builds ontop of UDP
+
+------------------------------
+WRQ is write request
+RRQ is read request
+
+On read datablocks will be sent with an index, starting from 0.
+These are acked with reference to this index
+On write request an ack with block number 0 will be sent
+If reply is error message, request is denied
+
+Page 4 spec...
+
+-----
+opcodes:
+1	RRQ
+2	WRQ
+3	DATA
+4	ACK
+5	ERROR
+
+Zero ending before ending to be ignored (invalid mode)
+
+Filenames in ascii
+No spaces eller åäö
+
+Header is NetAscii
+Data is eighter netascii or octet
+Mode is .tolowercase
+
+Quest: error: only allow netascii, else error?
+No, client error not handled
+TID är portnamnet
+
+Data only need to bee implemented supporting octet (byte)
+header always netascii
 
 
 
