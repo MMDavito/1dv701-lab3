@@ -172,7 +172,9 @@ public class TFTPServer {
     }
 
     /**
-     * TODO To be implemented
+     * TODO To be implemented:
+     * WRQ using implemented bellow
+     *
      */
 
 
@@ -181,7 +183,8 @@ public class TFTPServer {
      *
      * @param datagramSocket
      * @param requestedFile
-     * @return
+     * @return True if success, false if any kind of error? Or should
+     * Errors be handled in this method? and redelayed to "send_error()"?
      */
     private boolean send_DATA_receive_ACK(DatagramSocket datagramSocket, String requestedFile) {
         System.out.println("Replying with data to:");
@@ -270,6 +273,7 @@ public class TFTPServer {
         try {
             socket.receive(receivePacket);
             byte[] tempArr = receivePacket.getData();
+            System.out.println("Datasize of ack is: " + tempArr.length);
             InetAddress iDress = receivePacket.getAddress();
             System.out.println("Is this a address:" + iDress);
             System.out.println(tempArr.length);
@@ -298,14 +302,68 @@ public class TFTPServer {
 
     /**
      * This is response to a WRQ request (write)
-     *
-     * @param sendSocket
+     *TODO: Compare this to SLASK/EXPERIMENTS, where i managed to print 5*buffsize using a loop to a file.
+     * @param datagramSocket
      * @param requestedFile
-     * @param opcode
      * @return
      */
-    private boolean receive_DATA_send_ACK(DatagramSocket sendSocket, String requestedFile, int opcode) {
+    private boolean receive_DATA_send_ACK(DatagramSocket datagramSocket, String requestedFile) {
+        File writeFile = new File(requestedFile);
+        FileOutputStream fileOutputStream = null;
+
+        if (!writeFile.isFile()) {
+            try {
+                writeFile.createNewFile();
+            } catch (Exception e) {
+                if (DEBUG) e.printStackTrace();
+                System.out.println("PROBS ALREADY THERE" + e);
+            }
+        }
+        try {
+            fileOutputStream = new FileOutputStream(writeFile);
+        } catch (FileNotFoundException e) {
+            System.err.println("Could not outputstream writefile");
+            if (DEBUG) e.printStackTrace();
+        }
+
+
+        byte[] buf = new byte[BUFSIZE];
+        DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
+        boolean recievedAll = false;
+        byte[] dataBuffer = null;
+        while (!recievedAll) {
+            try {
+                datagramSocket.receive(receivePacket);
+                ByteBuffer wrap = ByteBuffer.wrap(buf);//TODO may cause error, and garbagecollector may be stupid.
+                int opCode = getUnsignedShort(wrap);
+                int length = receivePacket.getData().length;
+                System.out.println("Längd av datapaket i WRQ: " + length);
+                if (length < sizeOfDataField) {//TODO Is not data but data+4
+                    recievedAll = true;
+                }
+
+            } catch (IOException e) {
+                System.err.println("Some error in recive_data");
+                if (DEBUG) e.printStackTrace();
+                return false;
+            }
+
+            if (fileOutputStream != null && dataBuffer != null) {
+                try {
+
+                    fileOutputStream.write(dataBuffer);
+                } catch (IOException e) {
+                    System.err.println("Error in writing");
+                    if (DEBUG) e.printStackTrace();
+                    return false;
+                }
+            }
+        }
         return true;
+    }
+
+    private void sendAck(DatagramSocket socket, int blockNum) {
+        throw new UnsupportedOperationException("MUST IMPLEMENT");
     }
 
     private void send_ERR(DatagramSocket sendSocket, String requestedFile, int opcode) {
