@@ -3,13 +3,16 @@ import java.net.*;
 import java.nio.ByteBuffer;
 
 public class TFTPServer {
+    boolean DEBUG = true;
     public static final int TFTPPORT = 4970;
     public static final int BUFSIZE = 516;
     public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
-/*
---------------------------------------------------------------
-Methods for unsigning stuffz
- */
+    private final int timeOut = 120000; //will timeOut after 2 minutes
+
+    /*
+    --------------------------------------------------------------
+    Methods for unsigning stuffz
+     */
     public static int getUnsignedShort(ByteBuffer bb) {
         return (bb.getShort() & 0xffff);
     }
@@ -18,13 +21,7 @@ Methods for unsigning stuffz
         bb.putShort((short) (value & 0xffff));
     }
 
-    public static int getUnsignedShort(ByteBuffer bb, int position) {
-        return (bb.getShort(position) & 0xffff);
-    }
 
-    public static void putUnsignedShort(ByteBuffer bb, int position, int value) {
-        bb.putShort(position, (short) (value & 0xffff));
-    }
 //------------------------------------------------------------------
 
     public static final String READDIR = "~/TEMP_LNU/read/"; //custom address at your PC
@@ -154,9 +151,10 @@ Methods for unsigning stuffz
      */
     private void HandleRQ(DatagramSocket sendSocket, String requestedFile, int opcode) {
         System.out.println("Handeling here");
+
         if (opcode == OP_RRQ) {
             // See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
-            boolean result = send_DATA_receive_ACK(sendSocket, requestedFile, OP_DAT);
+            boolean result = send_DATA_receive_ACK(sendSocket, requestedFile);
         } else if (opcode == OP_WRQ) {
             boolean result = receive_DATA_send_ACK(sendSocket, requestedFile, OP_ACK);
         } else {
@@ -175,14 +173,14 @@ Methods for unsigning stuffz
     /**
      * This is response to a RRQ request (read)
      *
-     * @param sendSocket
+     * @param datagramSocket
      * @param requestedFile
-     * @param opcode        Remove?
      * @return
      */
-    private boolean send_DATA_receive_ACK(DatagramSocket socketAddress, String requestedFile, int opcode) {
+    private boolean send_DATA_receive_ACK(DatagramSocket datagramSocket, String requestedFile) {
         System.out.println("Replying with data to:");
-        System.out.println(socketAddress.getInetAddress() + ", Using port: " + socketAddress.getPort());
+        System.out.println(datagramSocket.getInetAddress() + ", Using port: " + datagramSocket.getPort());
+        boolean allPacketsSent = false;
 
         int blockNum = 1;
         File file = new File(requestedFile);
@@ -191,41 +189,93 @@ Methods for unsigning stuffz
         byte[] buf = new byte[sizeOfDataField];
         if (file.isFile()) {
             try {
-                fileInputStream = new FileInputStream(file);
-                int fileLength = fileInputStream.available();
-                while (fileLength - (sizeOfDataField * blockNum) >= 0) {
-                    fileInputStream.read(buf, sizeOfDataField * (blockNum - 1), sizeOfDataField);
-                    ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
-                    wrap.putShort((short) OP_DAT);
-                    putUnsignedShort(wrap, 2, blockNum);
-                    wrap.put(buf, 4, sizeOfDataField);
-                    DatagramPacket sendPacket =
-                            new DatagramPacket(returnBuff,
-                                    returnBuff.length,
-                                    socketAddress.getInetAddress(),
-                                    socketAddress.getPort());
+                long heartBeat = System.currentTimeMillis();
+                while (!allPacketsSent || (System.currentTimeMillis() - heartBeat) < timeOut) {
 
-                    socketAddress.send(sendPacket);
-                    blockNum++;
+                    fileInputStream = new FileInputStream(file);
+                    int fileLength = fileInputStream.available();
+                    while (fileLength - (sizeOfDataField * blockNum) >= 0) {
+                        fileInputStream.read(buf);
+                        ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
+                        putUnsignedShort(wrap, OP_DAT);
+                        putUnsignedShort(wrap, blockNum);
+                        wrap.put(buf);
+                        DatagramPacket sendPacket =
+                                new DatagramPacket(returnBuff,
+                                        returnBuff.length,
+                                        datagramSocket.getInetAddress(),
+                                        datagramSocket.getPort());
+
+                        datagramSocket.send(sendPacket);
+                        boolean acked = receiveAck(datagramSocket, blockNum);
+                        if (acked) blockNum++;
+                        else return false;
+                    }
+                    if (true || (fileLength - (sizeOfDataField * (blockNum - 1))) > 0) {//TODO: Should it always do this?, else remove "TRUE"||
+                        //Send the last dataPacket with length <512
+                        int length = fileLength - (sizeOfDataField * (blockNum - 1));
+                        returnBuff = new byte[length + 4];
+                        buf = new byte[length];
+                        fileInputStream.read(buf);
+                        ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
+                        putUnsignedShort(wrap, OP_DAT);
+                        putUnsignedShort(wrap, blockNum);
+                        wrap.put(buf);
+                        DatagramPacket sendPacket =
+                                new DatagramPacket(returnBuff,
+                                        returnBuff.length,
+                                        datagramSocket.getInetAddress(),
+                                        datagramSocket.getPort());
+
+                        datagramSocket.send(sendPacket);
+                        boolean acked = receiveAck(datagramSocket, blockNum);
+                        if (acked) {
+                            allPacketsSent = true;
+                        } else {
+                            //TODO REMOVE????: throw new ConnectException("ERROR ON LAST PACKET");
+                            return false;
+                        }
+                    }
                 }
-                if (true || (fileLength - (sizeOfDataField * (blockNum - 1))) > 0) {//TODO: Should it always do this?, else remove "TRUE"||
-                    int length = fileLength - (sizeOfDataField * (blockNum - 1));
-                    returnBuff = new byte[length + 4];
-                    buf = new byte[length];
-                    fileInputStream.read(buf, sizeOfDataField * (blockNum - 1), length);
-
-
-                }
-            } catch (Exception e) {//TODO; Resend a error package
+            } catch (Exception e) {//TODO; Resend a error package to socket (implement read first, then write, then errors)
                 System.err.println("Is a file but not reachable, should just let this catch handle everything\n" + e);
             }
+
         } else {
             throw new UnsupportedOperationException("Need to implement this shit, probably return a error message and close connection");
         }
 
 
-        return true;
+        return allPacketsSent;
     }
+
+    private boolean receiveAck(DatagramSocket socket, int blockNum) {
+        boolean wasAcked = false;
+        byte[] buf = new byte[4];
+        DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
+        try {
+            socket.receive(receivePacket);
+
+            ByteBuffer wrap = ByteBuffer.wrap(buf);
+            int opCode = getUnsignedShort(wrap);
+            int ackNum = getUnsignedShort(wrap);
+
+            if (opCode != OP_ACK) {
+                System.err.println("It is probably an error? " + opCode);
+                return wasAcked;
+            } else if (ackNum != blockNum) {
+                System.err.println("Numbers are not equal:\n" +
+                        "Tried to acknowledge: " + ackNum + ", to block#" + blockNum);
+                return wasAcked;
+            } else wasAcked = true;
+
+        } catch (IOException e) {
+            System.err.println("Error receiving acknowledgment: " + e);
+            if (DEBUG) e.printStackTrace();
+        }
+        return wasAcked;
+    }
+
 
     /**
      * This is response to a WRQ request (write)
