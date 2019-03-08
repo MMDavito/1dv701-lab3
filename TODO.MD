@@ -1,7 +1,7 @@
 Port is 4970
 localhost 4970
 
-tftp localhost 4970 -c put /home/david/Documents/shit.txt shit.txt
+tftp localhost 4970 -c get readShit.MD
 
 /home/david/Documents/shit.txt
 

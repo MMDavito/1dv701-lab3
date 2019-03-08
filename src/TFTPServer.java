@@ -24,8 +24,8 @@ public class TFTPServer {
 
 //------------------------------------------------------------------
 
-    public static final String READDIR = "~/TEMP_LNU/read/"; //custom address at your PC
-    public static final String WRITEDIR = "~/TEMP_LNU/write/"; //custom address at your PC
+    public static final String READDIR = "/home/david/TEMP_LNU/read/"; //custom address at your PC
+    public static final String WRITEDIR = "/home/david/TEMP_LNU/write/"; //custom address at your PC
     // OP codes
     public static final int OP_RRQ = 1;
     public static final int OP_WRQ = 2;
@@ -77,8 +77,7 @@ public class TFTPServer {
             new Thread() {
                 public void run() {
                     try {
-                        DatagramSocket sendSocket = new DatagramSocket(0);
-
+                        DatagramSocket sendSocket = new DatagramSocket(null);
                         // Connect to client
                         sendSocket.connect(clientAddress);
 
@@ -89,12 +88,18 @@ public class TFTPServer {
                         // Read request
                         if (reqtype == OP_RRQ) {
                             requestedFile.insert(0, READDIR);
-                            HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
+                            //TODO Remove hardcoded
+                            //HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
+                            String reqString = READDIR + "readShit.MD";
+                            HandleRQ(sendSocket, reqString, OP_RRQ);
                         }
                         // Write request
                         else {
                             requestedFile.insert(0, WRITEDIR);
-                            HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
+                            //TODO Remove hardcoded
+                            //HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
+                            String reqString = WRITEDIR + "writeShit.MD";
+                            HandleRQ(sendSocket, reqString, OP_WRQ);
                         }
                         sendSocket.close();
                     } catch (SocketException e) {
@@ -130,15 +135,16 @@ public class TFTPServer {
 
     /**
      * Parses the request in buf to retrieve the type of request and requestedFile
+     * TODO: extract filename from this buf to stringbuffer!
      *
      * @param buf           (received request)
      * @param requestedFile (name of file to read/write)
      * @return opcode (request type: RRQ or WRQ)
      */
-    private short ParseRQ(byte[] buf, StringBuffer requestedFile) {
+    private int ParseRQ(byte[] buf, StringBuffer requestedFile) {
         // See "TFTP Formats" in TFTP specification for the RRQ/WRQ request contents
         ByteBuffer wrap = ByteBuffer.wrap(buf);
-        short opcode = wrap.getShort();
+        int opcode = wrap.getShort();
         return opcode;
     }
 
@@ -184,6 +190,7 @@ public class TFTPServer {
 
         int blockNum = 1;
         File file = new File(requestedFile);
+        System.out.println("FilePath: " + file.getAbsolutePath());
         FileInputStream fileInputStream = null;
         byte[] returnBuff = new byte[BUFSIZE];
         byte[] buf = new byte[sizeOfDataField];
@@ -249,16 +256,28 @@ public class TFTPServer {
         return allPacketsSent;
     }
 
+    /**
+     * TODO: FIX this so buffer manages a complete udp packet
+     *
+     * @param socket
+     * @param blockNum
+     * @return
+     */
     private boolean receiveAck(DatagramSocket socket, int blockNum) {
         boolean wasAcked = false;
-        byte[] buf = new byte[4];
+        byte[] buf = new byte[4];//TODO: UDP DATAGRAM SIZES 8 byte udpheader
         DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
         try {
             socket.receive(receivePacket);
-
+            byte[] tempArr = receivePacket.getData();
+            InetAddress iDress = receivePacket.getAddress();
+            System.out.println("Is this a address:" + iDress);
+            System.out.println(tempArr.length);
             ByteBuffer wrap = ByteBuffer.wrap(buf);
             int opCode = getUnsignedShort(wrap);
+            System.out.println("opcode from ack: " + opCode);
             int ackNum = getUnsignedShort(wrap);
+            System.out.println("acknum from ack: " + ackNum);
 
             if (opCode != OP_ACK) {
                 System.err.println("It is probably an error? " + opCode);

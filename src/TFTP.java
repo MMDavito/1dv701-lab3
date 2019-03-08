@@ -32,9 +32,9 @@ public class TFTP {
         public byte[] toByteArr() {
             byte[] buf = new byte[BUFFSIZE];
             ByteBuffer wrap = ByteBuffer.wrap(buf);
-            wrap.putShort()
+            wrap.putShort(1,(short) 3);
             System.out.println(opcode);
-
+return null;
         }
     }
 
@@ -79,7 +79,7 @@ public class TFTP {
             if (!hasSent) {
                 return -1;
             }
-            if (data.length > maxBufSize) {
+            if (data.length > 516) {
                 return -2;
             } else {
                 this.data = data;
