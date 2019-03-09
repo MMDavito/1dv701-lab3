@@ -7,6 +7,7 @@ public class TFTPServer {
     public static final int TFTPPORT = 4970;
     public static final int BUFSIZE = 516;
     public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
+    public static final int sizeOfUdpData = 65507;//20Byte ipv4 header, 8 byte udp header
     private final int timeOut = 120000; //will timeOut after 2 minutes
 
     /*
@@ -24,14 +25,26 @@ public class TFTPServer {
 
 //------------------------------------------------------------------
 
-    public static final String READDIR = "/home/david/TEMP_LNU/read/"; //custom address at your PC
-    public static final String WRITEDIR = "/home/david/TEMP_LNU/write/"; //custom address at your PC
+    public static final String READDIR = "read/"; //custom address at your PC
+    //public static final String READDIR = "/home/david/TEMP_LNU/read/"; //custom address at your PC
+    public static final String WRITEDIR = "write/"; //custom address at your PC
+    //public static final String WRITEDIR = "/home/david/TEMP_LNU/write/"; //custom address at your PC
     // OP codes
     public static final int OP_RRQ = 1;
     public static final int OP_WRQ = 2;
     public static final int OP_DAT = 3;
     public static final int OP_ACK = 4;
     public static final int OP_ERR = 5;
+
+    //TODO IMPLEMENT THIS
+    public static final int ERR_NOT_DEF = 0;//not defined
+    public static final int ERR_FNF = 1;//file not found
+    public static final int ERR_ACC_VIO = 2;//accessviolation
+    public static final int ERR_DRUNK = 3;//Disk full or allocation exceeded (35meg)
+    public static final int ERR_ILLEGAL = 4;//Tftp does not allow
+    public static final int ERR_TID_UNKNOWN = 5;//Transfer ID unknown
+    public static final int ERR_BLOCK_CREATE = 6;//File already exists
+    public static final int ERR_NO_USER = 7;//no sutch user
 
     public static void main(String[] args) {
         if (args.length > 0) {
@@ -90,7 +103,7 @@ public class TFTPServer {
                             requestedFile.insert(0, READDIR);
                             //TODO Remove hardcoded
                             //HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
-                            String reqString = READDIR + "readShit.MD";
+                            String reqString = READDIR + "bullshit.txt";
                             HandleRQ(sendSocket, reqString, OP_RRQ);
                         }
                         // Write request
@@ -98,7 +111,7 @@ public class TFTPServer {
                             requestedFile.insert(0, WRITEDIR);
                             //TODO Remove hardcoded
                             //HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
-                            String reqString = WRITEDIR + "writeShit.MD";
+                            String reqString = WRITEDIR + "writeShit.txt";
                             HandleRQ(sendSocket, reqString, OP_WRQ);
                         }
                         sendSocket.close();
@@ -162,7 +175,7 @@ public class TFTPServer {
             // See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
             boolean result = send_DATA_receive_ACK(sendSocket, requestedFile);
         } else if (opcode == OP_WRQ) {
-            boolean result = receive_DATA_send_ACK(sendSocket, requestedFile, OP_ACK);
+            boolean result = receive_DATA_send_ACK(sendSocket, requestedFile);
         } else {
             System.err.println("Invalid request. Sending an error packet.");
             // See "TFTP Formats" in TFTP specification for the ERROR packet contents
@@ -172,7 +185,7 @@ public class TFTPServer {
     }
 
     /**
-     * TODO To be implemented:
+     * TODO To be implemented:readShit.MD
      * WRQ using implemented bellow
      *
      */
@@ -221,9 +234,12 @@ public class TFTPServer {
                         if (acked) blockNum++;
                         else return false;
                     }
-                    if (true || (fileLength - (sizeOfDataField * (blockNum - 1))) > 0) {//TODO: Should it always do this?, else remove "TRUE"||
+                    if (true) {//TODO: Should it always do this?, else remove "TRUE"||
+                        //if (true || (fileLength - (sizeOfDataField * (blockNum - 1))) > 0) {//TODO: Should it always do this?, else remove "TRUE"||
+                        //if ((fileLength - (sizeOfDataField * (blockNum-1))) > 0) {//TODO: Should it always do this?, else remove "TRUE"||
                         //Send the last dataPacket with length <512
                         int length = fileLength - (sizeOfDataField * (blockNum - 1));
+                        System.out.println("LENGTH: after if " + length);
                         returnBuff = new byte[length + 4];
                         buf = new byte[length];
                         fileInputStream.read(buf);
@@ -239,8 +255,9 @@ public class TFTPServer {
 
                         datagramSocket.send(sendPacket);
                         boolean acked = receiveAck(datagramSocket, blockNum);
+                        System.out.println("Was acked? " + (acked));
                         if (acked) {
-                            allPacketsSent = true;
+                            return true;
                         } else {
                             //TODO REMOVE????: throw new ConnectException("ERROR ON LAST PACKET");
                             return false;
@@ -288,7 +305,7 @@ public class TFTPServer {
                 return wasAcked;
             } else if (ackNum != blockNum) {
                 System.err.println("Numbers are not equal:\n" +
-                        "Tried to acknowledge: " + ackNum + ", to block#" + blockNum);
+                        "Client Tried to acknowledge: " + ackNum + ", to dataBlock#" + blockNum);
                 return wasAcked;
             } else wasAcked = true;
 
@@ -302,7 +319,8 @@ public class TFTPServer {
 
     /**
      * This is response to a WRQ request (write)
-     *TODO: Compare this to SLASK/EXPERIMENTS, where i managed to print 5*buffsize using a loop to a file.
+     * TODO: Compare this to SLASK/EXPERIMENTS, where i managed to print 5*buffsize using a loop to a file.
+     *
      * @param datagramSocket
      * @param requestedFile
      * @return
@@ -310,10 +328,17 @@ public class TFTPServer {
     private boolean receive_DATA_send_ACK(DatagramSocket datagramSocket, String requestedFile) {
         File writeFile = new File(requestedFile);
         FileOutputStream fileOutputStream = null;
+//TODO SEND ACK OF WRQ? But first: extract info from packet!!!!
+
+
+     //   int blockID = 0;
+       // sendAck(datagramSocket, blockID);
+
 
         if (!writeFile.isFile()) {
             try {
-                writeFile.createNewFile();
+                writeFile.createNewFile();//TODO: This should be norm, alternative.
+                //TODO: "IF file.isfile() MUST return error code #6, file already exists
             } catch (Exception e) {
                 if (DEBUG) e.printStackTrace();
                 System.out.println("PROBS ALREADY THERE" + e);
@@ -326,14 +351,20 @@ public class TFTPServer {
             if (DEBUG) e.printStackTrace();
         }
 
-
         byte[] buf = new byte[BUFSIZE];
         DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
         boolean recievedAll = false;
         byte[] dataBuffer = null;
         while (!recievedAll) {
             try {
+                System.out.println("Howdy partner");
                 datagramSocket.receive(receivePacket);
+                int size = receivePacket.getLength();
+                int shit = datagramSocket.getReceiveBufferSize();
+                System.out.println("RecivePacket    size: " + size);
+                System.out.println("DatagramSocket  size: " + shit);
+
+                System.out.println("Length to get");
                 ByteBuffer wrap = ByteBuffer.wrap(buf);//TODO may cause error, and garbagecollector may be stupid.
                 int opCode = getUnsignedShort(wrap);
                 int length = receivePacket.getData().length;
@@ -362,8 +393,30 @@ public class TFTPServer {
         return true;
     }
 
-    private void sendAck(DatagramSocket socket, int blockNum) {
-        throw new UnsupportedOperationException("MUST IMPLEMENT");
+    /**
+     * To send acknowledgment of reciveing WRQ (block_id #0) or received data
+     *
+     * @param datagramSocket
+     * @param blockNum
+     */
+    private void sendAck(DatagramSocket datagramSocket, int blockNum) {
+        byte[] ackBuff = new byte[4];
+        ByteBuffer wrap = ByteBuffer.wrap(ackBuff);
+        putUnsignedShort(wrap, OP_ACK);
+        putUnsignedShort(wrap, blockNum);
+
+        DatagramPacket ackPacket =
+                new DatagramPacket(ackBuff,
+                        ackBuff.length,
+                        datagramSocket.getInetAddress(),
+                        datagramSocket.getPort());
+
+        try {
+            datagramSocket.send(ackPacket);
+        } catch (IOException e) {
+            System.err.println("Exception when trying to acknowledge blockNumber#" + blockNum + "");
+            if (DEBUG) e.printStackTrace();
+        }
     }
 
     private void send_ERR(DatagramSocket sendSocket, String requestedFile, int opcode) {
