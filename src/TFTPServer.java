@@ -8,7 +8,11 @@ public class TFTPServer {
     public static final int BUFSIZE = 516;
     public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
     public static final int sizeOfUdpData = 65507;//20Byte ipv4 header, 8 byte udp header
-    private final int timeOut = 120000; //will timeOut after 2 minutes
+    public static final int maxLengthFileLength = 255;//max length of filename (inclusive filending) of most Operating Systems
+    public static final int maxFileSize = 32000000;//maximal filesize
+
+    public static final byte zeroByte = 0x00;
+    private final int timeOut = 120000; //will timeOut after 2 minutes, change if you are disconnected
 
     /*
     --------------------------------------------------------------
@@ -257,9 +261,11 @@ public class TFTPServer {
                         boolean acked = receiveAck(datagramSocket, blockNum);
                         System.out.println("Was acked? " + (acked));
                         if (acked) {
+                            fileInputStream.close();
                             return true;
                         } else {
                             //TODO REMOVE????: throw new ConnectException("ERROR ON LAST PACKET");
+                            fileInputStream.close();
                             return false;
                         }
                     }
@@ -328,67 +334,107 @@ public class TFTPServer {
     private boolean receive_DATA_send_ACK(DatagramSocket datagramSocket, String requestedFile) {
         File writeFile = new File(requestedFile);
         FileOutputStream fileOutputStream = null;
-//TODO SEND ACK OF WRQ? But first: extract info from packet!!!!
+// SEND ACK OF WRQ? But first: extract info from packet!!!! TODO But fake, är tvärt om
 
 
-     //   int blockID = 0;
-       // sendAck(datagramSocket, blockID);
+        //   int blockID = 0;
+        // sendAck(datagramSocket, blockID);
 
 
         if (!writeFile.isFile()) {
             try {
                 writeFile.createNewFile();//TODO: This should be norm, alternative.
                 //TODO: "IF file.isfile() MUST return error code #6, file already exists
+                //return false; TODO                ERR_ILLEGAL
             } catch (Exception e) {
                 if (DEBUG) e.printStackTrace();
                 System.out.println("PROBS ALREADY THERE" + e);
             }
         }
+
         try {
             fileOutputStream = new FileOutputStream(writeFile);
         } catch (FileNotFoundException e) {
             System.err.println("Could not outputstream writefile");
             if (DEBUG) e.printStackTrace();
+            return false;//TODO: Must resend errors
         }
 
-        byte[] buf = new byte[BUFSIZE];
+        byte[] buf = new byte[BUFSIZE];//TODO: Should it be size of data? and not entire message?
         DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
         boolean recievedAll = false;
         byte[] dataBuffer = null;
-        while (!recievedAll) {
+        int blockNum = 0;
+        sendAck(datagramSocket, blockNum); //TODO uncomment this code
+        while (!recievedAll && writeFile.length() < maxFileSize) {
             try {
                 System.out.println("Howdy partner");
                 datagramSocket.receive(receivePacket);
-                int size = receivePacket.getLength();
+                int lengthOfPacket = receivePacket.getLength();
                 int shit = datagramSocket.getReceiveBufferSize();
-                System.out.println("RecivePacket    size: " + size);
+                System.out.println("RecivePacket    size: " + lengthOfPacket);
                 System.out.println("DatagramSocket  size: " + shit);
+                System.out.println("Buffer          size: " + buf.length);
+                blockNum++;
 
                 System.out.println("Length to get");
-                ByteBuffer wrap = ByteBuffer.wrap(buf);//TODO may cause error, and garbagecollector may be stupid.
+                dataBuffer = receivePacket.getData();
+                ByteBuffer wrap = ByteBuffer.wrap(dataBuffer);//TODO may cause error, and garbagecollector may be stupid.
                 int opCode = getUnsignedShort(wrap);
-                int length = receivePacket.getData().length;
-                System.out.println("Längd av datapaket i WRQ: " + length);
-                if (length < sizeOfDataField) {//TODO Is not data but data+4
+                if (opCode != OP_DAT) {
+                    System.err.println("Error: opcode is not equal DAT in recive.\n"
+                            + "Opcode received: " + opCode + "\n"
+                            + "Opcode expected: " + OP_DAT);
+                    return false;//TODO implement error
+                }
+                int tempBlock = getUnsignedShort(wrap);
+                if (tempBlock != blockNum) {
+                    System.err.println("Error: blockNum is not what expected in receive.\n"
+                            + "BlockNum received: #" + opCode + "\n"
+                            + "BlockNum expected: #" + OP_DAT);
+                    return false;//TODO implement error
+                }
+                System.out.println("Opcode in recive of data(should be 3): " + opCode);
+                //int length = receivePacket.getData().length;
+//                fileOutputStream.write(buf);
+
+                System.out.println("Data buff before:   " + dataBuffer.length);
+                wrap.get(dataBuffer, 0, lengthOfPacket - 4);
+                System.out.println("Data buff after:    " + dataBuffer.length);
+
+                int temp = 0;
+                for (int i = 0; i < lengthOfPacket - 4; i++) {
+                    fileOutputStream.write(dataBuffer[i]);
+                }
+                System.out.println("Tempely " + temp);
+                //fileOutputStream.write(dataBuffer);
+
+
+                System.out.println("Längd av datapaket i WRQ: " + (lengthOfPacket - 4));
+                if (lengthOfPacket - 4 < sizeOfDataField) {//TODO Is not data but data+4
+                    System.out.println("RETURNING BECAUSE LOW LENGTH (below " + sizeOfDataField + ")");
                     recievedAll = true;
                 }
 
-            } catch (IOException e) {
+            } catch (Exception e) {
                 System.err.println("Some error in recive_data");
                 if (DEBUG) e.printStackTrace();
+                try {
+                    fileOutputStream.close();
+                } catch (IOException e1) {
+                    System.err.println("Failed to close FileOutputStream: " + e1);
+                    if (DEBUG) e1.printStackTrace();
+                    return false;//TODO RETURN ERROR
+                }
                 return false;
             }
-
-            if (fileOutputStream != null && dataBuffer != null) {
-                try {
-
-                    fileOutputStream.write(dataBuffer);
-                } catch (IOException e) {
-                    System.err.println("Error in writing");
-                    if (DEBUG) e.printStackTrace();
-                    return false;
-                }
-            }
+            sendAck(datagramSocket, blockNum);
+        }
+        try {
+            fileOutputStream.close();
+        } catch (IOException e) {
+            System.err.println("Failed to close FileOutputStream before returning: " + e);
+            if (DEBUG) e.printStackTrace();
         }
         return true;
     }
