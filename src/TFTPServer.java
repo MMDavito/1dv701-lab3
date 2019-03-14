@@ -13,6 +13,7 @@ public class TFTPServer {
 
     public static final byte zeroByte = 0x00;
     private final int timeOut = 120000; //will timeOut after 2 minutes, change if you are disconnected
+    public static final int timeOutSocket = 3000;// 3 Seconds
 
     /*
     --------------------------------------------------------------
@@ -197,6 +198,7 @@ public class TFTPServer {
 
     /**
      * This is response to a RRQ request (read)
+     * IS DONE BUT UGLY As Fuck.
      *
      * @param datagramSocket
      * @param requestedFile
@@ -217,12 +219,25 @@ public class TFTPServer {
         if (file.isFile()) {
             try {
                 long heartBeat = System.currentTimeMillis();
+                int numRetransmissions = 0;
+                final int maxRetransmissions = 5;
                 while (!allPacketsSent || (System.currentTimeMillis() - heartBeat) < timeOut) {
 
                     fileInputStream = new FileInputStream(file);
-                    int fileLength = fileInputStream.available();
-                    while (fileLength - (sizeOfDataField * blockNum) >= 0) {
-                        fileInputStream.read(buf);
+                    while (fileInputStream.available() > 0) {
+                        int lengthRead = fileInputStream.read(buf);
+                        if (lengthRead < 0) {
+                            //TODO: this is also a fileNotFound
+                            System.err.println("This should never happen but will close socket with port: " + datagramSocket.getPort());
+                            datagramSocket.close();
+                        }
+                        if (lengthRead < sizeOfDataField) {
+                            //This is the last packet
+                            byte[] tempBuff = new byte[lengthRead];
+                            System.arraycopy(buf, 0, tempBuff, 0, lengthRead);
+                            buf = tempBuff;
+                            returnBuff = new byte[lengthRead + 4];
+                        }
                         ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
                         putUnsignedShort(wrap, OP_DAT);
                         putUnsignedShort(wrap, blockNum);
@@ -233,40 +248,31 @@ public class TFTPServer {
                                         datagramSocket.getInetAddress(),
                                         datagramSocket.getPort());
 
+                        //TODO REMOVE
+                        System.out.println("Send packet before sending: " + sendPacket.getLength());
                         datagramSocket.send(sendPacket);
-                        boolean acked = receiveAck(datagramSocket, blockNum);
-                        if (acked) blockNum++;
-                        else return false;
-                    }
-                    if (true) {//TODO: Should it always do this?, else remove "TRUE"||
-                        //if (true || (fileLength - (sizeOfDataField * (blockNum - 1))) > 0) {//TODO: Should it always do this?, else remove "TRUE"||
-                        //if ((fileLength - (sizeOfDataField * (blockNum-1))) > 0) {//TODO: Should it always do this?, else remove "TRUE"||
-                        //Send the last dataPacket with length <512
-                        int length = fileLength - (sizeOfDataField * (blockNum - 1));
-                        System.out.println("LENGTH: after if " + length);
-                        returnBuff = new byte[length + 4];
-                        buf = new byte[length];
-                        fileInputStream.read(buf);
-                        ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
-                        putUnsignedShort(wrap, OP_DAT);
-                        putUnsignedShort(wrap, blockNum);
-                        wrap.put(buf);
-                        DatagramPacket sendPacket =
-                                new DatagramPacket(returnBuff,
-                                        returnBuff.length,
-                                        datagramSocket.getInetAddress(),
-                                        datagramSocket.getPort());
+                        //TODO REMOVE
+                        System.out.println("Send packet after sending: " + sendPacket.getLength());
 
-                        datagramSocket.send(sendPacket);
                         boolean acked = receiveAck(datagramSocket, blockNum);
                         System.out.println("Was acked? " + (acked));
                         if (acked) {
                             fileInputStream.close();
+                            numRetransmissions = 0;
                             return true;
                         } else {
-                            //TODO REMOVE????: throw new ConnectException("ERROR ON LAST PACKET");
-                            fileInputStream.close();
-                            return false;
+                            while (acked == false) {
+                                if (numRetransmissions == maxRetransmissions) {
+                                    //TODO: close connection and return, this must be done in mainThread(if returned false)
+                                    System.err.println("Socket: " + datagramSocket.getPort() + ", made " + numRetransmissions
+                                            + " resubmission and should therefore be seen as dead");
+                                    fileInputStream.close();
+                                    return false;
+                                }
+                                datagramSocket.send(sendPacket);
+                                acked = receiveAck(datagramSocket, blockNum);
+                                numRetransmissions++;
+                            }
                         }
                     }
                 }
@@ -283,18 +289,28 @@ public class TFTPServer {
     }
 
     /**
-     * TODO: FIX this so buffer manages a complete udp packet
+     * Recives acknowledgment with blockNum from socket, returns false if any error.
+     * Is done but ugly, not the ugliest thou
+     * TODO: Implement "Timeout" 10 sek är rimmligt
      *
      * @param socket
      * @param blockNum
-     * @return
+     * @return True if acknowledgement returns same blockNum as <code>blockNum</code> given as argument.
      */
     private boolean receiveAck(DatagramSocket socket, int blockNum) {
         boolean wasAcked = false;
         byte[] buf = new byte[4];//TODO: UDP DATAGRAM SIZES 8 byte udpheader
         DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
         try {
-            socket.receive(receivePacket);
+            socket.setSoTimeout(timeOutSocket);
+            try {
+                socket.receive(receivePacket);
+            } catch (SocketTimeoutException se) {
+                System.err.println("Socket with port: " + socket.getPort() +
+                        "\nTimed out when waiting for ack of blockNum: " + blockNum);
+                socket.setSoTimeout(0);
+                return false;
+            }
             byte[] tempArr = receivePacket.getData();
             System.out.println("Datasize of ack is: " + tempArr.length);
             InetAddress iDress = receivePacket.getAddress();
@@ -324,8 +340,7 @@ public class TFTPServer {
 
 
     /**
-     * This is response to a WRQ request (write)
-     * TODO: Compare this to SLASK/EXPERIMENTS, where i managed to print 5*buffsize using a loop to a file.
+     * This is "tested" using
      *
      * @param datagramSocket
      * @param requestedFile
@@ -340,8 +355,7 @@ public class TFTPServer {
         //   int blockID = 0;
         // sendAck(datagramSocket, blockID);
 
-
-        if (!writeFile.isFile()) {
+        if (!writeFile.isFile()) {//TODO: reverse this functinality before submission.
             try {
                 writeFile.createNewFile();//TODO: This should be norm, alternative.
                 //TODO: "IF file.isfile() MUST return error code #6, file already exists
