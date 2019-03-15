@@ -30,9 +30,9 @@ public class TFTPServer {
 
 //------------------------------------------------------------------
 
-    public static final String READDIR = "read/"; //custom address at your PC
+    public static final String READDIR = "SERVER_FILES/read_files/"; //custom address at your PC
     //public static final String READDIR = "/home/david/TEMP_LNU/read/"; //custom address at your PC
-    public static final String WRITEDIR = "write/"; //custom address at your PC
+    public static final String WRITEDIR = "SERVER_FILES/written_files/"; //custom address at your PC
     //public static final String WRITEDIR = "/home/david/TEMP_LNU/write/"; //custom address at your PC
     // OP codes
     public static final int OP_RRQ = 1;
@@ -108,7 +108,7 @@ public class TFTPServer {
                             requestedFile.insert(0, READDIR);
                             //TODO Remove hardcoded
                             //HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
-                            String reqString = READDIR + "bullshit.txt";
+                            String reqString = READDIR + "LillaSkit.txt";
                             HandleRQ(sendSocket, reqString, OP_RRQ);
                         }
                         // Write request
@@ -116,7 +116,7 @@ public class TFTPServer {
                             requestedFile.insert(0, WRITEDIR);
                             //TODO Remove hardcoded
                             //HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
-                            String reqString = WRITEDIR + "writeShit.txt";
+                            String reqString = WRITEDIR + "SkrivTillSkit.txt";
                             HandleRQ(sendSocket, reqString, OP_WRQ);
                         }
                         sendSocket.close();
@@ -190,7 +190,7 @@ public class TFTPServer {
     }
 
     /**
-     * TODO To be implemented:readShit.MD
+     * TODO To be implemented:
      * WRQ using implemented bellow
      *
      */
@@ -221,7 +221,10 @@ public class TFTPServer {
                 long heartBeat = System.currentTimeMillis();
                 int numRetransmissions = 0;
                 final int maxRetransmissions = 5;
-                while (!allPacketsSent || (System.currentTimeMillis() - heartBeat) < timeOut) {
+                boolean isLastPacket = false;
+                while (System.currentTimeMillis()-heartBeat <timeOut){
+               // while (true || (System.currentTimeMillis() - heartBeat) < timeOut) {
+                    //TODO PROB REMOVE: 2 minutes to write, gives time to copy paste an entire file and its acknowledgements.
 
                     fileInputStream = new FileInputStream(file);
                     while (fileInputStream.available() > 0) {
@@ -237,6 +240,7 @@ public class TFTPServer {
                             System.arraycopy(buf, 0, tempBuff, 0, lengthRead);
                             buf = tempBuff;
                             returnBuff = new byte[lengthRead + 4];
+                            isLastPacket = true;
                         }
                         ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
                         putUnsignedShort(wrap, OP_DAT);
@@ -257,9 +261,13 @@ public class TFTPServer {
                         boolean acked = receiveAck(datagramSocket, blockNum);
                         System.out.println("Was acked? " + (acked));
                         if (acked) {
-                            fileInputStream.close();
                             numRetransmissions = 0;
-                            return true;
+                            heartBeat=System.currentTimeMillis();
+                            blockNum++;
+                            if (isLastPacket) {
+                                fileInputStream.close();
+                                return true;
+                            }
                         } else {
                             while (acked == false) {
                                 if (numRetransmissions == maxRetransmissions) {
@@ -269,6 +277,7 @@ public class TFTPServer {
                                     fileInputStream.close();
                                     return false;
                                 }
+                                System.out.println("Was not acked");
                                 datagramSocket.send(sendPacket);
                                 acked = receiveAck(datagramSocket, blockNum);
                                 numRetransmissions++;
@@ -281,7 +290,7 @@ public class TFTPServer {
             }
 
         } else {
-            throw new UnsupportedOperationException("Need to implement this shit, probably return a error message and close connection");
+            throw new UnsupportedOperationException("Need to implement this shit, return error FNF");
         }
 
 
@@ -302,7 +311,9 @@ public class TFTPServer {
         byte[] buf = new byte[4];//TODO: UDP DATAGRAM SIZES 8 byte udpheader
         DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
         try {
+            long start = System.currentTimeMillis();
             socket.setSoTimeout(timeOutSocket);
+            System.out.println("RecieveAck took: " + (System.currentTimeMillis() - start));
             try {
                 socket.receive(receivePacket);
             } catch (SocketTimeoutException se) {
@@ -311,6 +322,7 @@ public class TFTPServer {
                 socket.setSoTimeout(0);
                 return false;
             }
+            socket.setSoTimeout(0);
             byte[] tempArr = receivePacket.getData();
             System.out.println("Datasize of ack is: " + tempArr.length);
             InetAddress iDress = receivePacket.getAddress();
@@ -438,7 +450,7 @@ public class TFTPServer {
                 } catch (IOException e1) {
                     System.err.println("Failed to close FileOutputStream: " + e1);
                     if (DEBUG) e1.printStackTrace();
-                    return false;//TODO RETURN ERROR
+                    return false;//TODO RETURN ERROR (call method sendErro (send_error()))
                 }
                 return false;
             }

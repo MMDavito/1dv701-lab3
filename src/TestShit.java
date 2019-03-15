@@ -13,8 +13,8 @@ public class TestShit {
         boolean areEqual = true;
         int sizeOfDataField = 512;
         int blockNum = 1;
-        File originalFile = new File("TEMP_LNU/write_to_server/DetVar.txt");
-        File writtenFile = new File("write/writeShit.txt");
+        File originalFile = new File("SERVER_FILES/read_files/LillaSkit.txt");
+        File writtenFile = new File("CLIENT_FILES/read_to/readShit.MD");
 
         FileInputStream streamOrgi = null;
         FileInputStream streamWritten = null;
