@@ -9,7 +9,7 @@ public class TFTPServer {
     public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
     public static final int sizeOfUdpData = 65507;//20Byte ipv4 header, 8 byte udp header
     public static final int maxLengthFileLength = 255;//max length of filename (inclusive filending) of most Operating Systems
-    public static final int maxFileSize = 32000000;//maximal filesize
+    public static final int maxShort = 65535;//maximal value for a short.
 
     public static final byte zeroByte = 0x00;
     private final int timeOut = 120000; //will timeOut after 2 minutes, change if you are disconnected
@@ -222,69 +222,72 @@ public class TFTPServer {
                 int numRetransmissions = 0;
                 final int maxRetransmissions = 5;
                 boolean isLastPacket = false;
-                while (System.currentTimeMillis()-heartBeat <timeOut){
-               // while (true || (System.currentTimeMillis() - heartBeat) < timeOut) {
-                    //TODO PROB REMOVE: 2 minutes to write, gives time to copy paste an entire file and its acknowledgements.
+                fileInputStream = new FileInputStream(file);
+                if (fileInputStream.available() == 0) {
+                }
+                while (fileInputStream.available() >= 0 && System.currentTimeMillis() - heartBeat < timeOut) {
+                    int lengthRead = -1;
+                    if (fileInputStream.available() == 0) {
+                        lengthRead = 0;
+                    } else {
+                        lengthRead = fileInputStream.read(buf);
+                    }
+                    if (lengthRead < 0) {
+                        //TODO: this is also a fileNotFound
+                        System.err.println("This should never happen but will close socket with port: " + datagramSocket.getPort());
+                        datagramSocket.close();
+                    }
+                    if (lengthRead < sizeOfDataField) {
+                        //This is the last packet
+                        byte[] tempBuff = new byte[lengthRead];
+                        System.arraycopy(buf, 0, tempBuff, 0, lengthRead);
+                        buf = tempBuff;
+                        returnBuff = new byte[lengthRead + 4];
+                        isLastPacket = true;
+                    }
+                    ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
+                    putUnsignedShort(wrap, OP_DAT);
+                    putUnsignedShort(wrap, blockNum);
+                    wrap.put(buf);
+                    DatagramPacket sendPacket =
+                            new DatagramPacket(returnBuff,
+                                    returnBuff.length,
+                                    datagramSocket.getInetAddress(),
+                                    datagramSocket.getPort());
 
-                    fileInputStream = new FileInputStream(file);
-                    while (fileInputStream.available() > 0) {
-                        int lengthRead = fileInputStream.read(buf);
-                        if (lengthRead < 0) {
-                            //TODO: this is also a fileNotFound
-                            System.err.println("This should never happen but will close socket with port: " + datagramSocket.getPort());
-                            datagramSocket.close();
+                    //TODO REMOVE
+                    System.out.println("Send packet before sending: " + sendPacket.getLength());
+                    datagramSocket.send(sendPacket);
+                    //TODO REMOVE
+                    System.out.println("Send packet after sending: " + sendPacket.getLength());
+
+                    boolean acked = receiveAck(datagramSocket, blockNum);
+                    System.out.println("Was acked? " + (acked));
+                    if (acked) {
+                        numRetransmissions = 0;
+                        heartBeat = System.currentTimeMillis();
+                        blockNum++;
+                        if (isLastPacket) {
+                            fileInputStream.close();
+                            return true;
                         }
-                        if (lengthRead < sizeOfDataField) {
-                            //This is the last packet
-                            byte[] tempBuff = new byte[lengthRead];
-                            System.arraycopy(buf, 0, tempBuff, 0, lengthRead);
-                            buf = tempBuff;
-                            returnBuff = new byte[lengthRead + 4];
-                            isLastPacket = true;
-                        }
-                        ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
-                        putUnsignedShort(wrap, OP_DAT);
-                        putUnsignedShort(wrap, blockNum);
-                        wrap.put(buf);
-                        DatagramPacket sendPacket =
-                                new DatagramPacket(returnBuff,
-                                        returnBuff.length,
-                                        datagramSocket.getInetAddress(),
-                                        datagramSocket.getPort());
-
-                        //TODO REMOVE
-                        System.out.println("Send packet before sending: " + sendPacket.getLength());
-                        datagramSocket.send(sendPacket);
-                        //TODO REMOVE
-                        System.out.println("Send packet after sending: " + sendPacket.getLength());
-
-                        boolean acked = receiveAck(datagramSocket, blockNum);
-                        System.out.println("Was acked? " + (acked));
-                        if (acked) {
-                            numRetransmissions = 0;
-                            heartBeat=System.currentTimeMillis();
-                            blockNum++;
-                            if (isLastPacket) {
+                    } else {
+                        while (acked == false) {
+                            if (numRetransmissions == maxRetransmissions) {
+                                //TODO: close connection and return, this must be done in mainThread(if returned false)
+                                System.err.println("Socket: " + datagramSocket.getPort() + ", made " + numRetransmissions
+                                        + " resubmission and should therefore be seen as dead");
                                 fileInputStream.close();
-                                return true;
+                                return false;
                             }
-                        } else {
-                            while (acked == false) {
-                                if (numRetransmissions == maxRetransmissions) {
-                                    //TODO: close connection and return, this must be done in mainThread(if returned false)
-                                    System.err.println("Socket: " + datagramSocket.getPort() + ", made " + numRetransmissions
-                                            + " resubmission and should therefore be seen as dead");
-                                    fileInputStream.close();
-                                    return false;
-                                }
-                                System.out.println("Was not acked");
-                                datagramSocket.send(sendPacket);
-                                acked = receiveAck(datagramSocket, blockNum);
-                                numRetransmissions++;
-                            }
+                            System.out.println("Was not acked");
+                            datagramSocket.send(sendPacket);
+                            acked = receiveAck(datagramSocket, blockNum);
+                            numRetransmissions++;
                         }
                     }
                 }
+
             } catch (Exception e) {//TODO; Resend a error package to socket (implement read first, then write, then errors)
                 System.err.println("Is a file but not reachable, should just let this catch handle everything\n" + e);
             }
@@ -366,7 +369,7 @@ public class TFTPServer {
 
         //   int blockID = 0;
         // sendAck(datagramSocket, blockID);
-
+        File writeDirr = new File(WRITEDIR);//TODO: COuld check if disk is not full!=!=!???
         if (!writeFile.isFile()) {//TODO: reverse this functinality before submission.
             try {
                 writeFile.createNewFile();//TODO: This should be norm, alternative.
@@ -387,23 +390,26 @@ public class TFTPServer {
         }
 
         byte[] buf = new byte[BUFSIZE];//TODO: Should it be size of data? and not entire message?
-        DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
+
         boolean recievedAll = false;
         byte[] dataBuffer = null;
         int blockNum = 0;
         sendAck(datagramSocket, blockNum); //TODO uncomment this code
-        while (!recievedAll && writeFile.length() < maxFileSize) {
+        int totalLength = 0;
+
+        // last packet is the smallest
+        DatagramPacket receivePacket = new DatagramPacket(buf, buf.length); //can be created here because
+        while (!recievedAll) {//TODO Count packets and if blocknum reaches max, return erro
             try {
                 System.out.println("Howdy partner");
                 datagramSocket.receive(receivePacket);
                 int lengthOfPacket = receivePacket.getLength();
-                int shit = datagramSocket.getReceiveBufferSize();
-                System.out.println("RecivePacket    size: " + lengthOfPacket);
-                System.out.println("DatagramSocket  size: " + shit);
-                System.out.println("Buffer          size: " + buf.length);
                 blockNum++;
+                if (blockNum == maxShort) {
+                    //TODO: Send_error
+                    throw new UnsupportedOperationException("FIX THIS");
+                }
 
-                System.out.println("Length to get");
                 dataBuffer = receivePacket.getData();
                 ByteBuffer wrap = ByteBuffer.wrap(dataBuffer);//TODO may cause error, and garbagecollector may be stupid.
                 int opCode = getUnsignedShort(wrap);
@@ -422,24 +428,25 @@ public class TFTPServer {
                 }
                 System.out.println("Opcode in recive of data(should be 3): " + opCode);
                 //int length = receivePacket.getData().length;
-//                fileOutputStream.write(buf);
 
-                System.out.println("Data buff before:   " + dataBuffer.length);
-                wrap.get(dataBuffer, 0, lengthOfPacket - 4);
-                System.out.println("Data buff after:    " + dataBuffer.length);
-
-                int temp = 0;
-                for (int i = 0; i < lengthOfPacket - 4; i++) {
+                System.out.println("SizeBefore: " + dataBuffer.length);
+                byte[] tempArr = new byte[lengthOfPacket - wrap.position()];
+                System.out.println("Wrap possition: " + wrap.position());
+                System.arraycopy(dataBuffer, wrap.position(), tempArr, 0, lengthOfPacket - wrap.position());
+                System.out.println("SizeAfter: " + tempArr.length);
+                totalLength += tempArr.length;
+                System.out.println("TOTALLENGTH: " + totalLength);
+                /*for (int i = 4; i < lengthOfPacket - 4; i++) {
                     fileOutputStream.write(dataBuffer[i]);
-                }
-                System.out.println("Tempely " + temp);
-                //fileOutputStream.write(dataBuffer);
-
-
-                System.out.println("Längd av datapaket i WRQ: " + (lengthOfPacket - 4));
+                }*/
+                fileOutputStream.write(tempArr);
+                fileOutputStream.getFD().sync();
+                sendAck(datagramSocket, blockNum);
                 if (lengthOfPacket - 4 < sizeOfDataField) {//TODO Is not data but data+4
-                    System.out.println("RETURNING BECAUSE LOW LENGTH (below " + sizeOfDataField + ")");
+                    System.out.println("HERE TWICE???");
+                    System.out.println("Size of last: " + tempArr.length);
                     recievedAll = true;
+                    break;
                 }
 
             } catch (Exception e) {
@@ -454,7 +461,6 @@ public class TFTPServer {
                 }
                 return false;
             }
-            sendAck(datagramSocket, blockNum);
         }
         try {
             fileOutputStream.close();
@@ -462,7 +468,7 @@ public class TFTPServer {
             System.err.println("Failed to close FileOutputStream before returning: " + e);
             if (DEBUG) e.printStackTrace();
         }
-        return true;
+        return recievedAll;
     }
 
     /**
@@ -494,6 +500,14 @@ public class TFTPServer {
     private void send_ERR(DatagramSocket sendSocket, String requestedFile, int opcode) {
     }
 
+    //TODO REMOVE
+    private static String byteArrToString(byte[] arr) {
+        StringBuilder stringBuilder = new StringBuilder(arr.length);
+        for (byte b : arr) {
+            stringBuilder.append((char) b);
+        }
+        return stringBuilder.toString();
+    }
 }
 
 

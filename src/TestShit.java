@@ -13,8 +13,14 @@ public class TestShit {
         boolean areEqual = true;
         int sizeOfDataField = 512;
         int blockNum = 1;
-        File originalFile = new File("SERVER_FILES/read_files/LillaSkit.txt");
-        File writtenFile = new File("CLIENT_FILES/read_to/readShit.MD");
+        File originalFile = null;
+        File writtenFile = null;
+        try {
+            originalFile = new File("CLIENT_FILES/read_to/readShit.txt");
+            writtenFile = new File("SERVER_FILES/written_files/SkrivTillSkit.txt");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         FileInputStream streamOrgi = null;
         FileInputStream streamWritten = null;
