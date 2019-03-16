@@ -16,8 +16,8 @@ public class TestShit {
         File originalFile = null;
         File writtenFile = null;
         try {
-            originalFile = new File("CLIENT_FILES/write_from/Happy_bee.jpg");
-            writtenFile = new File("SERVER_FILES/written_files/Happy_bee.jpg");
+            originalFile = new File("CLIENT_FILES/read_to/512Chars.txt");
+            writtenFile = new File("SERVER_FILES/read_files/512Chars.txt");
         } catch (Exception e) {
             e.printStackTrace();
         }

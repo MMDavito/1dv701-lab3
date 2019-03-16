@@ -34,12 +34,14 @@ public class TFTPServer {
     //public static final String READDIR = "/home/david/TEMP_LNU/read/"; //custom address at your PC
     public static final String WRITEDIR = "SERVER_FILES/written_files/"; //custom address at your PC
     //public static final String WRITEDIR = "/home/david/TEMP_LNU/write/"; //custom address at your PC
+
     // OP codes
     public static final int OP_RRQ = 1;
     public static final int OP_WRQ = 2;
     public static final int OP_DAT = 3;
     public static final int OP_ACK = 4;
     public static final int OP_ERR = 5;
+
     public static final int minOp = 1;//Expect no smaller op than this
     public static final int maxOp = 5;//Expect no larger op than this.
 
@@ -52,6 +54,9 @@ public class TFTPServer {
     public static final int ERR_TID_UNKNOWN = 5;//Transfer ID unknown
     public static final int ERR_BLOCK_CREATE = 6;//File already exists
     public static final int ERR_NO_USER = 7;//no sutch user
+
+    public static final int minError = 0;//must atleast be 1
+    public static final int maxError = 7;//cannot handle errorcodes higher than 7
 
     public static void main(String[] args) {
         if (args.length > 0) {
@@ -223,7 +228,7 @@ public class TFTPServer {
         } else {
             System.err.println("Invalid request. Sending an error packet.");
             // See "TFTP Formats" in TFTP specification for the ERROR packet contents
-            send_ERR(sendSocket, requestedFile, OP_ERR);
+            send_ERR(sendSocket, ERR_NOT_DEF, "Illegal command");
             return;
         }
     }
@@ -261,6 +266,9 @@ public class TFTPServer {
                 int numRetransmissions = 0;
                 final int maxRetransmissions = 5;
                 boolean isLastPacket = false;
+                if (file.length() >= (maxShort * sizeOfDataField)) {//TODO send_error
+                    throw new UnsupportedOperationException("Need to resend error");
+                }
                 fileInputStream = new FileInputStream(file);
                 if (fileInputStream.available() == 0) {
                 }
@@ -537,7 +545,41 @@ public class TFTPServer {
         }
     }
 
-    private void send_ERR(DatagramSocket sendSocket, String requestedFile, int opcode) {
+    /**
+     * @param sendSocket  DatagramSocket to send error to.
+     * @param errorCode   Integer specifying error code.
+     * @param errorString String containing error message wiched to send. in netascii
+     */
+    private void send_ERR(DatagramSocket sendSocket, int errorCode, String errorString) {
+        if (errorCode < minError || errorCode > maxError) {
+            throw new UnsupportedOperationException("How did you program this server? This should not be possible." +
+                    "\nThere exist no error code with value: " + errorCode);//Crashes server
+        }
+
+        if (errorString.length() > sizeOfUdpData - 5) {
+            errorString = errorString.substring(0, sizeOfUdpData - 5);
+        }
+        Net_Ascii_Bajs netAscii = new Net_Ascii_Bajs(errorString);
+
+
+        byte[] errorBuffer = new byte[sizeOfUdpData];
+        ByteBuffer wrap = ByteBuffer.wrap(errorBuffer);
+        putUnsignedShort(wrap, OP_ERR);
+        putUnsignedShort(wrap, errorCode);
+        byte[] fuckedByteArr = netAscii.getString().getBytes();
+        wrap.put(fuckedByteArr);
+        errorBuffer[errorBuffer.length - 1] = 0x00;//This to make sure in lazy way sure last byte is zero
+        DatagramPacket errorPacket = new DatagramPacket(//TODO ERROR PRONE ON virtualbox will fail
+                errorBuffer,
+                errorBuffer.length,
+                sendSocket.getInetAddress(),
+                sendSocket.getPort());
+        try {
+            sendSocket.send(errorPacket);
+        } catch (IOException e) {
+            System.err.println("Exception when trying to send error to port: " + sendSocket.getPort());
+            if (DEBUG) e.printStackTrace();
+        }
     }
 
     //TODO REMOVE

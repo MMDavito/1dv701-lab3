@@ -14,3 +14,5 @@ tftp localhost 4970 -c get readShit.MD
 4.0 Check if acks get transmitted via server in virtualbox and wireshark annalysis.
 5.0 Start making it threaded.
 
+
+//TODO FFS I use external host addresses instead of servers to build DatagramPacket
