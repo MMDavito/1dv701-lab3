@@ -8,7 +8,7 @@ public class TFTPServer {
     public static final int BUFSIZE = 516;
     public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
     public static final int sizeOfUdpData = 65507;//20Byte ipv4 header, 8 byte udp header
-    public static final int maxLengthFileLength = 255;//max length of filename (inclusive filending) of most Operating Systems
+    public static final int maxLengthFileName = 255;//max length of filename (inclusive filending) of most Operating Systems
     public static final int maxShort = 65535;//maximal value for a short.
 
     public static final byte zeroByte = 0x00;
@@ -40,6 +40,8 @@ public class TFTPServer {
     public static final int OP_DAT = 3;
     public static final int OP_ACK = 4;
     public static final int OP_ERR = 5;
+    public static final int minOp = 1;//Expect no smaller op than this
+    public static final int maxOp = 5;//Expect no larger op than this.
 
     //TODO IMPLEMENT THIS
     public static final int ERR_NOT_DEF = 0;//not defined
@@ -88,12 +90,19 @@ public class TFTPServer {
             System.out.println("Client: " + clientAddress);
 
 //TODO, Thread it from here. BUT first, make it work with one client.
+//TODO THREAD IT BEFORE SUBMITT
 
-            final StringBuffer requestedFile = new StringBuffer();
-            final int reqtype = ParseRQ(buf, requestedFile);
 //TODO WTF There is a thread here already?
             new Thread() {
                 public void run() {
+                    final StringBuffer requestedFile = new StringBuffer();
+                    final StringBuffer mode = new StringBuffer();
+                    final int reqtype = ParseRQ(buf, requestedFile, mode);
+                    if (mode.toString().equals("netascii")) {
+
+                        System.err.println("Are you from 1960 or something? You can only use octet, will send error");
+                        throw new UnsupportedOperationException("Implement send_error in start"); //TODO SEND_ERROR UNSUPPORTED
+                    }
                     try {
                         DatagramSocket sendSocket = new DatagramSocket(null);
                         // Connect to client
@@ -106,18 +115,18 @@ public class TFTPServer {
                         // Read request
                         if (reqtype == OP_RRQ) {
                             requestedFile.insert(0, READDIR);
+                            System.out.println("File to read: " + requestedFile);
                             //TODO Remove hardcoded
                             //HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
-                            String reqString = READDIR + "LillaSkit.txt";
-                            HandleRQ(sendSocket, reqString, OP_RRQ);
+                            HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
                         }
                         // Write request
                         else {
                             requestedFile.insert(0, WRITEDIR);
-                            //TODO Remove hardcoded
+                            System.out.println("File to write: " + requestedFile);
+                            //TODO Remove hardcoded (was static filename)
                             //HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
-                            String reqString = WRITEDIR + "SkrivTillSkit.txt";
-                            HandleRQ(sendSocket, reqString, OP_WRQ);
+                            HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
                         }
                         sendSocket.close();
                     } catch (SocketException e) {
@@ -156,13 +165,41 @@ public class TFTPServer {
      * TODO: extract filename from this buf to stringbuffer!
      *
      * @param buf           (received request)
-     * @param requestedFile (name of file to read/write)
-     * @return opcode (request type: RRQ or WRQ)
+     * @param requestedFile (name of file to read/write).
+     * @param mode          (mode of transfer)
+     * @return OP_Code (request type: RRQ or WRQ). OR: -1 if opCode invalid, -2 if filename is over 255 bytes long.
      */
-    private int ParseRQ(byte[] buf, StringBuffer requestedFile) {
+    private int ParseRQ(byte[] buf, StringBuffer requestedFile, StringBuffer mode) {
         // See "TFTP Formats" in TFTP specification for the RRQ/WRQ request contents
         ByteBuffer wrap = ByteBuffer.wrap(buf);
         int opcode = wrap.getShort();
+        if (opcode < minOp || opcode > maxOp) {
+            return -1;
+        }
+        int index = wrap.position();
+        int lengthName = 0;
+        while (index < buf.length) {
+            if (buf[index] == 0x00) {
+                lengthName = index - wrap.position();
+                break;
+            } else if (lengthName == maxLengthFileName + 1) {
+                return -2;
+            } else {
+                requestedFile.append((char) buf[index]);
+            }
+            index++;//TODO: Could FUBAR filename (see if wrap.position is culprit)
+        }
+        if (buf[index] == 0x00) {//End of filename, start of mode
+            index++;
+            while (index < buf.length) {
+                if (buf[index] == 0x00) {
+                    break;
+                } else {
+                    mode.append((char) buf[index]);
+                }
+                index++;
+            }
+        }
         return opcode;
     }
 
@@ -179,8 +216,10 @@ public class TFTPServer {
         if (opcode == OP_RRQ) {
             // See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
             boolean result = send_DATA_receive_ACK(sendSocket, requestedFile);
+            System.out.println("From RRQ: " + result);
         } else if (opcode == OP_WRQ) {
             boolean result = receive_DATA_send_ACK(sendSocket, requestedFile);
+            System.out.println("From WRQ: " + result);
         } else {
             System.err.println("Invalid request. Sending an error packet.");
             // See "TFTP Formats" in TFTP specification for the ERROR packet contents
@@ -364,12 +403,17 @@ public class TFTPServer {
     private boolean receive_DATA_send_ACK(DatagramSocket datagramSocket, String requestedFile) {
         File writeFile = new File(requestedFile);
         FileOutputStream fileOutputStream = null;
+        byte[] buf = new byte[BUFSIZE];//TODO: Should it be size of data? and not entire message?
+        byte[] dataBuffer = null;
+        File writeDirr = new File(WRITEDIR);//TODO: COuld check if disk is not full!=!=!???
+
 // SEND ACK OF WRQ? But first: extract info from packet!!!! TODO But fake, är tvärt om
 
 
         //   int blockID = 0;
         // sendAck(datagramSocket, blockID);
-        File writeDirr = new File(WRITEDIR);//TODO: COuld check if disk is not full!=!=!???
+        System.out.println("Absolute path: " + writeFile.getAbsolutePath());
+        //if (writeFile.isFile()){throw new UnsupportedOperationException("MUST IMPLEMENT send_error");}//TODO
         if (!writeFile.isFile()) {//TODO: reverse this functinality before submission.
             try {
                 writeFile.createNewFile();//TODO: This should be norm, alternative.
@@ -377,11 +421,14 @@ public class TFTPServer {
                 //return false; TODO                ERR_ILLEGAL
             } catch (Exception e) {
                 if (DEBUG) e.printStackTrace();
-                System.out.println("PROBS ALREADY THERE" + e);
+                System.out.println("PROBS ALREADY THERE " + e);
+                if (DEBUG) e.printStackTrace();
+                return false;//TODO throw error
             }
         }
 
         try {
+            System.out.println("Is write a file? " + writeFile.isFile());
             fileOutputStream = new FileOutputStream(writeFile);
         } catch (FileNotFoundException e) {
             System.err.println("Could not outputstream writefile");
@@ -389,19 +436,15 @@ public class TFTPServer {
             return false;//TODO: Must resend errors
         }
 
-        byte[] buf = new byte[BUFSIZE];//TODO: Should it be size of data? and not entire message?
-
         boolean recievedAll = false;
-        byte[] dataBuffer = null;
-        int blockNum = 0;
+        int blockNum = 0;//First ack
         sendAck(datagramSocket, blockNum); //TODO uncomment this code
         int totalLength = 0;
 
         // last packet is the smallest
-        DatagramPacket receivePacket = new DatagramPacket(buf, buf.length); //can be created here because
-        while (!recievedAll) {//TODO Count packets and if blocknum reaches max, return erro
-            try {
-                System.out.println("Howdy partner");
+        try {
+            while (!recievedAll) {//TODO Count packets and if blocknum reaches max, return erro
+                DatagramPacket receivePacket = new DatagramPacket(buf, buf.length); //can be created here because
                 datagramSocket.receive(receivePacket);
                 int lengthOfPacket = receivePacket.getLength();
                 blockNum++;
@@ -409,10 +452,9 @@ public class TFTPServer {
                     //TODO: Send_error
                     throw new UnsupportedOperationException("FIX THIS");
                 }
-
-                dataBuffer = receivePacket.getData();
-                ByteBuffer wrap = ByteBuffer.wrap(dataBuffer);//TODO may cause error, and garbagecollector may be stupid.
+                ByteBuffer wrap = ByteBuffer.wrap(buf);//TODO may cause error, and garbagecollector may be stupid.
                 int opCode = getUnsignedShort(wrap);
+
                 if (opCode != OP_DAT) {
                     System.err.println("Error: opcode is not equal DAT in recive.\n"
                             + "Opcode received: " + opCode + "\n"
@@ -426,48 +468,46 @@ public class TFTPServer {
                             + "BlockNum expected: #" + OP_DAT);
                     return false;//TODO implement error
                 }
-                System.out.println("Opcode in recive of data(should be 3): " + opCode);
-                //int length = receivePacket.getData().length;
 
-                System.out.println("SizeBefore: " + dataBuffer.length);
-                byte[] tempArr = new byte[lengthOfPacket - wrap.position()];
-                System.out.println("Wrap possition: " + wrap.position());
-                System.arraycopy(dataBuffer, wrap.position(), tempArr, 0, lengthOfPacket - wrap.position());
-                System.out.println("SizeAfter: " + tempArr.length);
-                totalLength += tempArr.length;
-                System.out.println("TOTALLENGTH: " + totalLength);
-                /*for (int i = 4; i < lengthOfPacket - 4; i++) {
-                    fileOutputStream.write(dataBuffer[i]);
-                }*/
-                fileOutputStream.write(tempArr);
-                fileOutputStream.getFD().sync();
+                dataBuffer = new byte[lengthOfPacket - wrap.position()];
+                System.arraycopy(buf, wrap.position(), dataBuffer, 0, lengthOfPacket - wrap.position());
+
+                totalLength += dataBuffer.length;
+                System.out.println();
+                System.out.println("BlockNum: " + blockNum);
+                System.out.println("DataBuf length: " + dataBuffer.length);
+                System.out.println("First element: " + (dataBuffer[0]));
+                System.out.println("Last element: " + (dataBuffer[lengthOfPacket - 5]));
+
+                fileOutputStream.write(dataBuffer);
+                fileOutputStream.flush();
                 sendAck(datagramSocket, blockNum);
                 if (lengthOfPacket - 4 < sizeOfDataField) {//TODO Is not data but data+4
-                    System.out.println("HERE TWICE???");
-                    System.out.println("Size of last: " + tempArr.length);
+
                     recievedAll = true;
                     break;
                 }
-
-            } catch (Exception e) {
-                System.err.println("Some error in recive_data");
+            }
+        } catch (Exception e) {
+            System.err.println("Some error in recive_data");
+            if (DEBUG) e.printStackTrace();
+            try {
+                fileOutputStream.close();
+            } catch (IOException e1) {
+                System.err.println("Failed to close FileOutputStream: " + e1);
+                if (DEBUG) e1.printStackTrace();
+                return false;//TODO RETURN ERROR (call method sendErro (send_error()))
+            }
+            return false;
+        } finally {
+            try {
+                fileOutputStream.close();
+            } catch (IOException e) {
+                System.err.println("Failed to close FileOutputStream before returning: " + e);
                 if (DEBUG) e.printStackTrace();
-                try {
-                    fileOutputStream.close();
-                } catch (IOException e1) {
-                    System.err.println("Failed to close FileOutputStream: " + e1);
-                    if (DEBUG) e1.printStackTrace();
-                    return false;//TODO RETURN ERROR (call method sendErro (send_error()))
-                }
-                return false;
             }
         }
-        try {
-            fileOutputStream.close();
-        } catch (IOException e) {
-            System.err.println("Failed to close FileOutputStream before returning: " + e);
-            if (DEBUG) e.printStackTrace();
-        }
+
         return recievedAll;
     }
 
