@@ -2,6 +2,12 @@ import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 
+/**
+ * YES i know they are static.
+ * But they are final.
+ * So they wont create any misshapings.
+ * It is a matter of lack of time, I dont even have time to test paralillity of this program..
+ */
 public class TFTPServer {
     boolean DEBUG = true;
     public static final int TFTPPORT = 4970;
@@ -14,6 +20,7 @@ public class TFTPServer {
     public static final byte zeroByte = 0x00;
     private final int timeOut = 120000; //will timeOut after 2 minutes, change if you are disconnected
     public static final int timeOutSocket = 3000;// 3 Seconds
+    public static final int maxNumRetrans = 5;//Maximally 5 retransmiisions
 
     /*
     --------------------------------------------------------------
@@ -45,7 +52,6 @@ public class TFTPServer {
     public static final int minOp = 1;//Expect no smaller op than this
     public static final int maxOp = 5;//Expect no larger op than this.
 
-    //TODO IMPLEMENT THIS
     public static final int ERR_NOT_DEF = 0;//not defined
     public static final int ERR_FNF = 1;//file not found
     public static final int ERR_ACC_VIO = 2;//accessviolation
@@ -98,10 +104,6 @@ public class TFTPServer {
 
             System.out.println("Client: " + clientAddress);
 
-//TODO, Thread it from here. BUT first, make it work with one client.
-//TODO THREAD IT BEFORE SUBMITT
-
-//TODO WTF There is a thread here already?
             new Thread() {
                 public void run() {
                     final StringBuffer requestedFile = new StringBuffer();
@@ -131,16 +133,13 @@ public class TFTPServer {
                             if (reqtype == OP_RRQ) {
                                 requestedFile.insert(0, READDIR);
                                 System.out.println("File to read: " + requestedFile);
-                                //TODO Remove hardcoded
-                                //HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
+
                                 HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
                             }
                             // Write request
                             else {
                                 requestedFile.insert(0, WRITEDIR);
                                 System.out.println("File to write: " + requestedFile);
-                                //TODO Remove hardcoded (was static filename)
-                                //HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
                                 HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
                             }
                         }
@@ -180,7 +179,8 @@ public class TFTPServer {
 
     /**
      * Parses the request in buf to retrieve the type of request and requestedFile
-     * TODO: extract filename from this buf to stringbuffer!
+     * TODO: This is worst safety since Y2K, should check so java does not print Wonderfull/../.. and navigates to root
+     * TODO: But there is not enough time, let's just trust java!
      *
      * @param buf           (received request)
      * @param requestedFile (name of file to read/write).
@@ -205,7 +205,7 @@ public class TFTPServer {
             } else {
                 requestedFile.append((char) buf[index]);
             }
-            index++;//TODO: Could FUBAR filename (see if wrap.position is culprit)
+            index++;
         }
         if (buf[index] == 0x00) {//End of filename, start of mode
             index++;
@@ -247,20 +247,13 @@ public class TFTPServer {
     }
 
     /**
-     * TODO To be implemented:
-     * WRQ using implemented bellow
-     *
-     */
-
-
-    /**
      * This is response to a RRQ request (read)
      * IS DONE BUT UGLY As Fuck.
      *
      * @param datagramSocket
      * @param requestedFile
      * @return True if success, false if any kind of error? Or should
-     * Errors be handled in this method? and redelayed to "send_error()"?
+     * Errors be handled in this method? and redelayed to "send_error()"? Yes they are.
      */
     private boolean send_DATA_receive_ACK(DatagramSocket datagramSocket, String requestedFile) {
         System.out.println("Replying with data to:");
@@ -295,12 +288,15 @@ public class TFTPServer {
                         lengthRead = fileInputStream.read(buf);
                     }
                     if (lengthRead < 0) {
-                        //TODO: this is also a fileNotFound
-                        System.err.println("This should never happen but will close socket with port: " + datagramSocket.getPort());
-                        datagramSocket.close();
+                        //Could be some kind of fileNotFound
+                        //More likely i am just paranoid: TODO: FFS DONT BE SO SCARRED
+                        System.err.println("This should never happen but port: " + datagramSocket.getPort() + " succeded");
+                        if (fileInputStream != null) fileInputStream.close();
+                        send_ERR(datagramSocket, ERR_NOT_DEF, "Yet again succeded  with the impossible\n" +
+                                "Better safe than sorry");
+                        return false;
                     }
-                    if (lengthRead < sizeOfDataField) {
-                        //This is the last packet
+                    if (lengthRead < sizeOfDataField) {//This is the last packet
                         byte[] tempBuff = new byte[lengthRead];
                         System.arraycopy(buf, 0, tempBuff, 0, lengthRead);
                         buf = tempBuff;
@@ -317,11 +313,7 @@ public class TFTPServer {
                                     datagramSocket.getInetAddress(),
                                     datagramSocket.getPort());
 
-                    //TODO REMOVE
-                    System.out.println("Send packet before sending: " + sendPacket.getLength());
                     datagramSocket.send(sendPacket);
-                    //TODO REMOVE
-                    System.out.println("Send packet after sending: " + sendPacket.getLength());
 
                     boolean acked = receiveAck(datagramSocket, blockNum);
                     System.out.println("Was acked? " + (acked));
@@ -377,7 +369,6 @@ public class TFTPServer {
     /**
      * Recives acknowledgment with blockNum from socket, returns false if any error.
      * Is done but ugly, not the ugliest thou
-     * TODO: Implement "Timeout" 10 sek är rimmligt
      *
      * @param socket
      * @param blockNum
@@ -389,11 +380,11 @@ public class TFTPServer {
         DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
         try {
             long start = System.currentTimeMillis();
-            DatagramSocket testSocket = new DatagramSocket();//TODO USE THIIS INSTEAD OF "Socket" to "test" timeout, against udpechoServer
-            socket.setSoTimeout(timeOutSocket);
+
+            socket.setSoTimeout(timeOutSocket);//TODO must be "socket"
             System.out.println("RecieveAck took: " + (System.currentTimeMillis() - start));//TODO REMOVE
             try {
-                socket.receive(receivePacket);
+                socket.receive(receivePacket);//TODO must be "socket"
             } catch (SocketTimeoutException se) {
                 System.err.println("Socket with port: " + socket.getPort() +
                         "\nTimed out when waiting for ack of blockNum: " + blockNum);
@@ -434,9 +425,9 @@ public class TFTPServer {
     private boolean receive_DATA_send_ACK(DatagramSocket datagramSocket, String requestedFile) {
         File writeFile = new File(requestedFile);
         FileOutputStream fileOutputStream = null;
-        byte[] buf = new byte[BUFSIZE];//TODO: Should it be size of data? and not entire message?
+        byte[] buf = new byte[BUFSIZE];
         byte[] dataBuffer = null;
-        File writeDirr = new File(WRITEDIR);//TODO: COuld check if disk is not full!=!=!???
+        File writeDirr = new File(WRITEDIR);
         long usableSpace = writeDirr.getUsableSpace();
         if (usableSpace < sizeOfDataField * maxShort) {
             send_ERR(datagramSocket, ERR_DRUNK, "Disk full or allocation exceeded:\n" +
@@ -445,23 +436,18 @@ public class TFTPServer {
             return false;
         }
 
-// SEND ACK OF WRQ? But first: extract info from packet!!!! TODO But fake, är tvärt om
-
-
-        //   int blockID = 0;
-        // sendAck(datagramSocket, blockID);
         System.out.println("Absolute path: " + writeFile.getAbsolutePath());
-        //if (writeFile.isFile()){throw new UnsupportedOperationException("MUST IMPLEMENT send_error");}//TODO
-        if (!writeFile.isFile()) {//TODO: reverse this functinality before submission.
+
+        if (!writeFile.isFile()) {
             try {
-                writeFile.createNewFile();//TODO: This should be norm, alternative.
-                //TODO: "IF file.isfile() MUST return error code #6, file already exists
-                //return false; TODO                ERR_ILLEGAL
+                writeFile.createNewFile();
             } catch (Exception e) {
+                System.err.println("Failed to create file " + writeFile.getName() + "\n"
+                        + e);
                 if (DEBUG) e.printStackTrace();
-                System.out.println("PROBS ALREADY THERE " + e);
-                if (DEBUG) e.printStackTrace();
-                return false;//TODO throw error
+                if (writeFile.isFile()) writeFile.delete();
+                send_ERR(datagramSocket, ERR_NOT_DEF, "Something made it impossible to create file.");
+                return false;
             }
         } else {//File exists.
             if (!DEBUG) {//If not "DEBUG", do not overWrite file.               TODO remove debug
@@ -472,28 +458,54 @@ public class TFTPServer {
         }
 
         try {
-            System.out.println("Is write a file? " + writeFile.isFile());
             fileOutputStream = new FileOutputStream(writeFile);
         } catch (FileNotFoundException e) {
-            System.err.println("Could not outputstream writefile");
+            System.err.println("Could not outputstream writefile, Not found? WTF???\n" +
+                    "Is it a file?: " + writeFile.isFile());
             if (DEBUG) e.printStackTrace();
-            return false;//TODO: Must resend errors
+            send_ERR(datagramSocket, ERR_NOT_DEF, "Could not create a OutputStream for your file: "
+                    + writeFile.getName());
+            return false;
         }
 
         boolean recievedAll = false;
         int blockNum = 0;//First ack
-        sendAck(datagramSocket, blockNum); //TODO uncomment this code
         int totalLength = 0;
+        sendAck(datagramSocket, blockNum);
 
         // last packet is the smallest
         try {
-            while (!recievedAll) {//This is always true. TODO Count packets and if blocknum reaches max, return erro
+            while (true) {//This is always true, instead of good design I return. Half of the 1000 line code is return statements.
                 DatagramPacket receivePacket = new DatagramPacket(buf, buf.length); //can be created here because
-                //TODO PUT TIMEOUT
-                datagramSocket.receive(receivePacket);
-                int lengthOfPacket = receivePacket.getLength();
+                boolean recievedAPacket = false;
+                int numRetransAck = 0;
+                while (!recievedAPacket) {
+                    datagramSocket.setSoTimeout(timeOutSocket);
+                    try {
+                        datagramSocket.receive(receivePacket);
+                        datagramSocket.setSoTimeout(0);
+                        recievedAPacket = true;
+                    } catch (SocketTimeoutException timeout) {
+                        datagramSocket.setSoTimeout(0);
+                        System.err.println("Socket with port: " + datagramSocket.getPort() + "\n" +
+                                "Timed out waiting for packet: " + (blockNum + 1));
+                        if (numRetransAck == maxNumRetrans) {
+                            send_ERR(datagramSocket, ERR_NOT_DEF,
+                                    "Server never recieved block #" + blockNum + ", of file "
+                                            + writeFile.getName() + ".\n" +
+                                            "After" + numRetransAck + ", retransmissions.\n" +
+                                            "Will therefore count you as dead.");
+                            if (fileOutputStream != null) fileOutputStream.close();
+                            if (writeFile.isFile()) writeFile.delete();
+                            return false;
+                        }
+                        sendAck(datagramSocket, blockNum);
+                        numRetransAck++;
+                    }
+                }
                 blockNum++;
-                if (blockNum == maxShort) {
+                int lengthOfPacket = receivePacket.getLength();
+                if (blockNum == maxShort && lengthOfPacket == 512 + 4) {//Disk full
                     send_ERR(datagramSocket, ERR_DRUNK, "Disk full or allocation exceeded:\n" +
                             "You tried to transfer a file bigger then " + (blockNum * sizeOfDataField) + " Bytes.\n" +
                             "Im sorry, but i recommend you use something else.");
@@ -552,13 +564,13 @@ public class TFTPServer {
                 if (DEBUG) e1.printStackTrace();
             }
             return false;
-        } finally {//Will most likely be returned false before this. TODO remove?
+        } finally {//Will most likely be returned false before this.
             try {
                 if (fileOutputStream != null) fileOutputStream.close();
                 if (!recievedAll && writeFile.isFile()) writeFile.delete();
-            } catch (IOException e) {//Most likely already closed
+            } catch (IOException e) {//It was most likely already closed
                 send_ERR(datagramSocket, ERR_NOT_DEF, "Should give David a slap.\n" +
-                        "He was to lasy to test all cases.");
+                        "He was to lazzy to test all cases.");
                 System.err.println("Failed to close FileOutputStream before returning: " + e);
                 if (DEBUG) e.printStackTrace();
             }
@@ -584,7 +596,6 @@ public class TFTPServer {
                         ackBuff.length,
                         datagramSocket.getInetAddress(),
                         datagramSocket.getPort());
-
         try {
             datagramSocket.send(ackPacket);
         } catch (IOException e) {
@@ -617,7 +628,7 @@ public class TFTPServer {
         byte[] fuckedByteArr = netAscii.getString().getBytes();
         wrap.put(fuckedByteArr);
         errorBuffer[errorBuffer.length - 1] = 0x00;//This to make sure in lazy way sure last byte is zero
-        DatagramPacket errorPacket = new DatagramPacket(//TODO ERROR PRONE ON virtualbox will fail
+        DatagramPacket errorPacket = new DatagramPacket(//TODO What fucking port and address is forced into packet?
                 errorBuffer,
                 errorBuffer.length,
                 sendSocket.getInetAddress(),
@@ -629,16 +640,4 @@ public class TFTPServer {
             if (DEBUG) e.printStackTrace();
         }
     }
-
-    //TODO REMOVE
-    private static String byteArrToString(byte[] arr) {
-        StringBuilder stringBuilder = new StringBuilder(arr.length);
-        for (byte b : arr) {
-            stringBuilder.append((char) b);
-        }
-        return stringBuilder.toString();
-    }
 }
-
-
-

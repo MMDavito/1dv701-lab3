@@ -16,3 +16,19 @@ tftp localhost 4970 -c get readShit.MD
 
 
 //TODO FFS I use external host addresses instead of servers to build DatagramPacket
+
+
+
+
+DatagramSocket testSocket = new DatagramSocket(null);//TODO USE THIIS INSTEAD OF "Socket" to "test" timeout, against udpechoServer
+            InetSocketAddress echoAddress = new InetSocketAddress("localhost", 4971);
+            testSocket.connect(echoAddress);
+
+try {
+                testSocket.receive(receivePacket);//TODO must be "socket"
+            } catch (SocketTimeoutException se) {
+                System.err.println("Socket with port: " + socket.getPort() +
+                        "\nTimed out when waiting for ack of blockNum: " + blockNum);
+                socket.setSoTimeout(0);
+                return false;
+            }
