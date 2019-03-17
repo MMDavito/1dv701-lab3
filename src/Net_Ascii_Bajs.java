@@ -12,13 +12,14 @@ public class Net_Ascii_Bajs {
             if (bytes[i] == 0x00) {
                 break;
             }
-            if (bytes[i]<0x20 ||bytes[i]>0x70){
+            if (bytes[i] < 0x20 || bytes[i] > 0x70) {
                 //TODO IGNORE AND EDIT, or control controll characters, fuck
             }
 
             if (bytes[i] == 0x0A) {// it is lineFeed
-                if (bytes[i - 1] != 0x0D) {
-                    throw new UnsupportedOperationException("Fuck yourself");
+                if (i > 0 && bytes[i - 1] != 0x0D) { //previous byte is not carrigereturn
+                    //Seems to work, got no time to annalyse this shit SCII
+                    //  throw new UnsupportedOperationException("Fuck yourself");
                 }
             }
         }
