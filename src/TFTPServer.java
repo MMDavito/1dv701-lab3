@@ -9,7 +9,7 @@ import java.nio.ByteBuffer;
  * It is a matter of lack of time, I dont even have time to test paralillity of this program..
  */
 public class TFTPServer {
-    boolean DEBUG = true;
+    boolean DEBUG = false;
     public static final int TFTPPORT = 4970;
     public static final int BUFSIZE = 516;
     public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
@@ -115,15 +115,12 @@ public class TFTPServer {
                         // Connect to client
                         sendSocket.connect(clientAddress);
 
-                        if (mode.toString().equals("netascii")) {
+                        if (!mode.toString().toLowerCase().equals("octet")) {
 
                             System.err.println("Are you from 1960 or something? You can only use octet, will send error");
                             send_ERR(sendSocket, ERR_ACC_VIO, "Access Denied:\n" +
                                     "You cant use netascii as trans_mode to this server");
                         } else {
-                            System.out.println("Inet cli:       " + sendSocket.getInetAddress());
-                            System.out.println("localPort:      " + sendSocket.getPort());
-                            System.out.println("remote? port:   " + sendSocket.getLocalPort());
 
                             System.out.printf("%s request for %s from %s using port %d\n",
                                     (reqtype == OP_RRQ) ? "Read" : "Write",
@@ -137,10 +134,13 @@ public class TFTPServer {
                                 HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
                             }
                             // Write request
-                            else {
+                            else if (reqtype == OP_WRQ) {
                                 requestedFile.insert(0, WRITEDIR);
                                 System.out.println("File to write: " + requestedFile);
                                 HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
+                            } else {
+                                System.out.println("Failed to parse message to socket: " + socket.getInetAddress() + "\n" +
+                                        "with opcode: " + reqtype);
                             }
                         }
                         System.out.println("Closing: " + sendSocket.getInetAddress());
@@ -218,6 +218,7 @@ public class TFTPServer {
                 index++;
             }
         }
+        System.out.println("REQUESTED: " + opcode + requestedFile.toString() + mode.toString());
         return opcode;
     }
 
@@ -239,7 +240,8 @@ public class TFTPServer {
             boolean result = receive_DATA_send_ACK(sendSocket, requestedFile);
             System.out.println("From WRQ: " + result);
         } else {
-            System.err.println("Invalid request. Sending an error packet.");
+            System.out.println("Invalid request(Or error). Sending an error packet.");
+            System.out.println("Socket: " + sendSocket.getInetAddress() + " used opCode: " + opcode);
             // See "TFTP Formats" in TFTP specification for the ERROR packet contents
             send_ERR(sendSocket, ERR_NOT_DEF, "Illegal command");
             return;
@@ -311,13 +313,14 @@ public class TFTPServer {
                             new DatagramPacket(returnBuff,
                                     returnBuff.length,
                                     datagramSocket.getInetAddress(),
+                                    //TODO: works on localhost using tftp-hpa
+                                    //TODO: should probably reuse clientaddress from begining to create packets.
                                     datagramSocket.getPort());
 
                     datagramSocket.send(sendPacket);
 
-                    boolean acked = receiveAck(datagramSocket, blockNum);
-                    System.out.println("Was acked? " + (acked));
-                    if (acked) {
+                    int acked = receiveAck(datagramSocket, blockNum);
+                    if (acked == 1) {
                         numRetransmissions = 0;
                         heartBeat = System.currentTimeMillis();
                         blockNum++;
@@ -325,8 +328,8 @@ public class TFTPServer {
                             fileInputStream.close();
                             return true;
                         }
-                    } else {
-                        while (acked == false) {
+                    } else if (acked == -1 || acked == -3) {
+                        while (acked == -1 || acked == -3) {
                             if (numRetransmissions == maxRetransmissions) {
                                 //TODO: close connection and return, this must be done in mainThread(if returned false)
                                 System.err.println("Socket: " + datagramSocket.getPort() + ", made " + numRetransmissions
@@ -339,6 +342,10 @@ public class TFTPServer {
                             acked = receiveAck(datagramSocket, blockNum);
                             numRetransmissions++;
                         }
+                    } else {
+                        System.err.println("Returning, because error was recieved from client connected to socket: "
+                                + datagramSocket.getInetAddress());
+                        return false;//Errors printed in recieveACK
                     }
                 }
             } catch (Exception e) {
@@ -372,40 +379,60 @@ public class TFTPServer {
      *
      * @param socket
      * @param blockNum
-     * @return True if acknowledgement returns same blockNum as <code>blockNum</code> given as argument.
+     * @return <p>
+     * +1==True if acknowledgement returns same blockNum as <code>blockNum</code> given as argument.
+     * 0 if undiagnosed error (probably disconnected client)
+     * -1 if timeout.
+     * -2 if it was an error message
+     * -3 if received ackNum was not equal to <code>blockNum</code>
+     * </p>
      */
-    private boolean receiveAck(DatagramSocket socket, int blockNum) {
-        boolean wasAcked = false;
-        byte[] buf = new byte[4];//TODO: UDP DATAGRAM SIZES 8 byte udpheader
+    private int receiveAck(DatagramSocket socket, int blockNum) {
+        int wasAcked = 0;
+        byte[] buf = new byte[4];
         DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
+        long start = System.currentTimeMillis();
         try {
-            long start = System.currentTimeMillis();
-
-            socket.setSoTimeout(timeOutSocket);//TODO must be "socket"
-            System.out.println("RecieveAck took: " + (System.currentTimeMillis() - start));//TODO REMOVE
+            socket.setSoTimeout(timeOutSocket);
             try {
-                socket.receive(receivePacket);//TODO must be "socket"
+                socket.receive(receivePacket);
             } catch (SocketTimeoutException se) {
+                System.out.println("RecieveAck took: " + (System.currentTimeMillis() - start));//TODO REMOVE
+
                 System.err.println("Socket with port: " + socket.getPort() +
                         "\nTimed out when waiting for ack of blockNum: " + blockNum);
                 socket.setSoTimeout(0);
-                return false;
+                return -1;
             }
             socket.setSoTimeout(0);
             byte[] tempArr = receivePacket.getData();
-            InetAddress iDress = receivePacket.getAddress();
-            System.out.println(tempArr.length);
             ByteBuffer wrap = ByteBuffer.wrap(buf);
             int opCode = getUnsignedShort(wrap);
-            int ackNum = getUnsignedShort(wrap);
             if (opCode != OP_ACK) {
-                System.err.println("It is probably an error? " + opCode);
-                return wasAcked;
-            } else if (ackNum != blockNum) {
+                if (opCode == OP_ERR) {
+                    System.err.println("It is probably an error? " + opCode);
+                    StringBuilder errorMessage = new StringBuilder();
+                    for (int i = wrap.position(); i < buf.length; i++) {
+                        if (buf[i] == 0x00) {
+                            System.err.println("An error with message: " + errorMessage.toString() + "\n" +
+                                    "Was recieved when waiting for acknum #" + blockNum);
+                            send_ERR(socket, ERR_NOT_DEF, "You are assumed dead");
+                            break;
+                        }
+                        errorMessage.append((char) buf[i]);
+                    }
+                    return -2;
+                } else {
+                    send_ERR(socket, ERR_ILLEGAL, "Mail me, because this is forbidden");
+                }
+
+            }
+            int ackNum = getUnsignedShort(wrap);
+            if (ackNum != blockNum) {
                 System.err.println("Numbers are not equal:\n" +
                         "Client Tried to acknowledge: " + ackNum + ", to dataBlock#" + blockNum);
-                return wasAcked;
-            } else wasAcked = true;
+                return -3;
+            } else wasAcked = 1;
 
         } catch (IOException e) {
             System.err.println("Error receiving acknowledgment: " + e);
@@ -435,8 +462,6 @@ public class TFTPServer {
                     "Email server admin and ask him to clean up server and send it to Behandlingshem.");
             return false;
         }
-
-        System.out.println("Absolute path: " + writeFile.getAbsolutePath());
 
         if (!writeFile.isFile()) {
             try {
@@ -499,11 +524,12 @@ public class TFTPServer {
                             if (writeFile.isFile()) writeFile.delete();
                             return false;
                         }
-                        sendAck(datagramSocket, blockNum);
+                        sendAck(datagramSocket, blockNum);//previous packet
                         numRetransAck++;
                     }
                 }
                 blockNum++;
+
                 int lengthOfPacket = receivePacket.getLength();
                 if (blockNum == maxShort && lengthOfPacket == 512 + 4) {//Disk full
                     send_ERR(datagramSocket, ERR_DRUNK, "Disk full or allocation exceeded:\n" +
@@ -521,7 +547,8 @@ public class TFTPServer {
                             + "Opcode received: " + opCode + "\n"
                             + "Opcode expected: " + OP_DAT);
                     send_ERR(datagramSocket, ERR_NOT_DEF, "How you managed get this far is beyond me.\n" +
-                            "Opcode expected: " + opCode + ", Opcode expected: " + OP_DAT);
+                            "Opcode recieved: " + opCode + ", Opcode expected: " + OP_DAT + "\n" +
+                            "You are seen as dead from now on(according to morgans Requirements)");
                     fileOutputStream.close();
                     writeFile.delete();
                     return false;
