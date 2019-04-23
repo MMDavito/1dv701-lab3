@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import pytest
 
 
@@ -7,7 +5,7 @@ import pytest
 @pytest.fixture(scope="module")
 def client():
     import tftpclient
-    return tftpclient.TFTPClient(('localhost', 4970), '/home/ubuntu/tftpdir/')
+    return tftpclient.TFTPClient(('localhost', 4970), '/home/david/LNU/1dv701/1dv701-lab3/Morgans_test_a3/Temp')
 
 
 # Get existing 50 byte file
@@ -37,22 +35,22 @@ def test_PSB50B(client):
 
 # Put 500 byte file
 def test_PSB500B(client):
-    assert client.putFileBytes(b'f500b.ul', 500)
+    assert client.putFileBytes(b'f500b.bin', 500)
 
 
 # Put 512 byte file
 def test_PMB1Blks(client):
-    assert client.putFileBlocks(b'f1blk.ul', 1)
+    assert client.putFileBlocks(b'f1blk.bin', 1)
 
 
 # Put 1,536 byte file
 def test_PMB3Blks(client):
-    assert client.putFileBlocks(b'f3blks.ul', 3)
+    assert client.putFileBlocks(b'f3blks.bin', 3)
 
 
 # Put 262,144 byte file
 def test_PMB512Blks(client):
-    assert client.putFileBlocks(b'f512blks.ul', 512)
+    assert client.putFileBlocks(b'f512blks.bin', 512)
 
 
 # Try to get a file that does not exist

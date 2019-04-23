@@ -9,7 +9,7 @@ import java.nio.ByteBuffer;
  * It is a matter of lack of time, I dont even have time to test paralillity of this program..
  */
 public class TFTPServer {
-    boolean DEBUG = false;
+    boolean DEBUG = true;
     public static final int TFTPPORT = 4970;
     public static final int BUFSIZE = 516;
     public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
@@ -19,7 +19,7 @@ public class TFTPServer {
 
     public static final byte zeroByte = 0x00;
     private final int timeOut = 120000; //will timeOut after 2 minutes, change if you are disconnected
-    public static final int timeOutSocket = 3000;// 3 Seconds
+    public static final int timeOutSocket = 100;// 3 Seconds
     public static final int maxNumRetrans = 5;//Maximally 5 retransmiisions
 
     /*
