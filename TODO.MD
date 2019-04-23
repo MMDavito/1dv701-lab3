@@ -32,3 +32,32 @@ try {
                 socket.setSoTimeout(0);
                 return false;
             }
+
+---------------------------------
+#Comments for resubmission:
+https://askubuntu.com/questions/201505/how-do-i-install-and-run-a-tftp-server
+service tftp
+{
+protocol        = udp
+port            = 69
+socket_type     = dgram
+wait            = yes
+user            = nobody
+server          = /usr/sbin/in.tftpd
+server_args     = /tftpboot
+disable         = no
+}
+
+#----------------------------------
+test_tftp.py::test_GMBFail1stAck
+test_tftp.py::test_GMBFail2ndAck
+################
+Sen kan man också kolla att två clienter klarar av 
+att köras samtidigt
+Eller är det att de skall kunna connecta.
+Att de kan svälta är inget problem?
+Kolla varför följande är slow as fuck:
+test_tftp.py::test_PMB1Blks PASSED
+test_tftp.py::test_PMB3Blks PASSED
+test_tftp.py::test_PMB512Blks PASSED
+

@@ -282,13 +282,15 @@ public class TFTPServer {
                 fileInputStream = new FileInputStream(file);
                 if (fileInputStream.available() == 0) {
                 }
-                while (fileInputStream.available() >= 0 && System.currentTimeMillis() - heartBeat < timeOut) {
+                //while (fileInputStream.available() >= 0 && System.currentTimeMillis() - heartBeat < timeOut) {
+                while (fileInputStream.available() > 0 && System.currentTimeMillis() - heartBeat < timeOut) {
                     int lengthRead = -1;
                     if (fileInputStream.available() == 0) {
                         lengthRead = 0;
                     } else {
                         lengthRead = fileInputStream.read(buf);
                     }
+                    System.out.println("LENGTH READ GOOOD DAMN IT: " + lengthRead);
                     if (lengthRead < 0) {
                         //Could be some kind of fileNotFound
                         //More likely i am just paranoid: TODO: FFS DONT BE SO SCARRED
@@ -324,10 +326,6 @@ public class TFTPServer {
                         numRetransmissions = 0;
                         heartBeat = System.currentTimeMillis();
                         blockNum++;
-                        if (isLastPacket) {
-                            fileInputStream.close();
-                            return true;
-                        }
                     } else if (acked == -1 || acked == -3) {
                         while (acked == -1 || acked == -3) {
                             if (numRetransmissions == maxRetransmissions) {
@@ -346,6 +344,10 @@ public class TFTPServer {
                         System.err.println("Returning, because error was recieved from client connected to socket: "
                                 + datagramSocket.getInetAddress());
                         return false;//Errors printed in recieveACK
+                    }
+                    if (isLastPacket && acked == 1) {
+                        fileInputStream.close();
+                        return true;
                     }
                 }
             } catch (Exception e) {
@@ -388,6 +390,7 @@ public class TFTPServer {
      * </p>
      */
     private int receiveAck(DatagramSocket socket, int blockNum) {
+        if (DEBUG) System.out.println("Waiting for blocknum: " + blockNum);
         int wasAcked = 0;
         byte[] buf = new byte[4];
         DatagramPacket receivePacket = new DatagramPacket(buf, buf.length);
@@ -397,7 +400,7 @@ public class TFTPServer {
             try {
                 socket.receive(receivePacket);
             } catch (SocketTimeoutException se) {
-                System.out.println("RecieveAck took: " + (System.currentTimeMillis() - start));//TODO REMOVE
+                if (DEBUG) System.out.println("RecieveAck took: " + (System.currentTimeMillis() - start));//TODO REMOVE
 
                 System.err.println("Socket with port: " + socket.getPort() +
                         "\nTimed out when waiting for ack of blockNum: " + blockNum);
@@ -405,7 +408,6 @@ public class TFTPServer {
                 return -1;
             }
             socket.setSoTimeout(0);
-            byte[] tempArr = receivePacket.getData();
             ByteBuffer wrap = ByteBuffer.wrap(buf);
             int opCode = getUnsignedShort(wrap);
             if (opCode != OP_ACK) {
@@ -428,11 +430,12 @@ public class TFTPServer {
 
             }
             int ackNum = getUnsignedShort(wrap);
+            System.out.println("Acknum: " + ackNum + " vs blocknum: " + blockNum);
             if (ackNum != blockNum) {
                 System.err.println("Numbers are not equal:\n" +
                         "Client Tried to acknowledge: " + ackNum + ", to dataBlock#" + blockNum);
                 return -3;
-            } else wasAcked = 1;
+            } else return 1;
 
         } catch (IOException e) {
             System.err.println("Error receiving acknowledgment: " + e);

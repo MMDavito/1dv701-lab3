@@ -112,18 +112,29 @@ class TFTPClient:
             ebn = 1
             while True:
                 for i in range(n + 1):
+                    print("I: ",i," N: ",n)
                     resp, ca = sock.recvfrom(1024)
                     pkt = self.parsePacket(resp)
-
+                    
                     if pkt['op'] != OP.DAT:
                         raise ValueError(f'Opcode should be DAT is {pkt["op"]}.')
                     if pkt['bn'] != ebn:
-                        raise ValueError(f'Block num should be {ebn} is {pkt["bn"]}.')
+                        req = self.createACK(pkt['bn'])
+                        sock.sendto(req, ca)
+
+                        if pkt['bn'] == ebn:
+                            if len(pkt['data']) > 512:
+                                ebn += 1
+                                continue
+                        
+
+                        #raise ValueError(f'Block num should be {ebn} is {pkt["bn"]}.')
                     if i != n:
                         continue
-
+                    print("i After shitt: ", i)
                     buf += pkt['data']
                     req = self.createACK(pkt['bn'])
+                    print("REQ num: ",pkt['bn'])
                     sock.sendto(req, ca)
 
                 if len(pkt['data']) < 512:
