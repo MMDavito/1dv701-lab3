@@ -22,7 +22,6 @@ class TFTPClient:
         self.basedir = Path(basedir)
 
     def createRequest(self, op, fn, mode=b'octet'):
-        
         return struct.pack('!H', op.value) + b'%b\x00%b\x00' % (fn, mode)
 
     def createRequestBadOp(self, op, fn, mode=b'octet'):
@@ -49,7 +48,6 @@ class TFTPClient:
         return rv
 
     def fileBufEq(self, fn, buf):
-        print("\nFilename: ",fn)
         fc = open(self.basedir / os.fsdecode(fn), 'rb').read()
 
         fc_h = hashlib.sha256()
@@ -112,29 +110,18 @@ class TFTPClient:
             ebn = 1
             while True:
                 for i in range(n + 1):
-                    print("I: ",i," N: ",n)
                     resp, ca = sock.recvfrom(1024)
                     pkt = self.parsePacket(resp)
-                    
+
                     if pkt['op'] != OP.DAT:
                         raise ValueError(f'Opcode should be DAT is {pkt["op"]}.')
                     if pkt['bn'] != ebn:
-                        req = self.createACK(pkt['bn'])
-                        sock.sendto(req, ca)
-
-                        if pkt['bn'] == ebn:
-                            if len(pkt['data']) > 512:
-                                ebn += 1
-                                continue
-                        
-
-                        #raise ValueError(f'Block num should be {ebn} is {pkt["bn"]}.')
+                        raise ValueError(f'Block num should be {ebn} is {pkt["bn"]}.')
                     if i != n:
                         continue
-                    print("i After shitt: ", i)
+
                     buf += pkt['data']
                     req = self.createACK(pkt['bn'])
-                    print("REQ num: ",pkt['bn'])
                     sock.sendto(req, ca)
 
                 if len(pkt['data']) < 512:
@@ -142,10 +129,8 @@ class TFTPClient:
 
                 ebn += 1
 
-            #if not self.fileBufEq(fn, buf):
-                #raise ValueError('Files are not the same.')
-                #print("FN: ",fn,"\nbuf:",buf)
-
+            if not self.fileBufEq(fn, buf):
+                raise ValueError('Files are not the same.')
 
         return True
 
@@ -186,7 +171,6 @@ class TFTPClient:
             resp, ca = sock.recvfrom(1024)
 
             pkt = self.parsePacket(resp)
-            print("Packet =\n",pkt)
             self.checkACK(pkt['op'], pkt['bn'] != 0)
 
             sbuf = np.random.bytes(sz)
@@ -200,9 +184,8 @@ class TFTPClient:
                 raise ValueError('Timeout waiting for ACK.')
         
         time.sleep(5)
-        #if not self.fileBufEq(fn, sbuf):
-            #print("FN: ",fn,"\nSBUF: ",sbuf)
-            #raise ValueError('Files are not the same.')
+        if not self.fileBufEq(fn, sbuf):
+            raise ValueError('Files are not the same.')
 
         return True
 
@@ -240,8 +223,7 @@ class TFTPClient:
                 raise ValueError('Timeout waiting for ACK.')
 
         time.sleep(5)
-        #if not self.fileBufEq(fn, fc):
-            #print("FN: ",fn,"\nfc:",fc)
-            #raise ValueError('Files are not the same.')
+        if not self.fileBufEq(fn, fc):
+            raise ValueError('Files are not the same.')
 
         return True

@@ -339,6 +339,11 @@ public class TFTPServer {
                             datagramSocket.send(sendPacket);
                             acked = receiveAck(datagramSocket, blockNum);
                             numRetransmissions++;
+                            if (acked == 1) {
+                                numRetransmissions = 0;
+                                heartBeat = System.currentTimeMillis();
+                                blockNum++;
+                            }
                         }
                     } else {
                         System.err.println("Returning, because error was recieved from client connected to socket: "
