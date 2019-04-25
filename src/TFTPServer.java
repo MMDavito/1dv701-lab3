@@ -39,7 +39,7 @@ public class TFTPServer {
 
     public static final String READDIR = "SERVER_FILES/read_files/"; //custom address at your PC
     //public static final String READDIR = "/home/david/TEMP_LNU/read/"; //custom address at your PC
-    public static final String WRITEDIR = "SERVER_FILES/written_files/"; //custom address at your PC
+    public static final String WRITEDIR = READDIR; //custom address at your PC
     //public static final String WRITEDIR = "/home/david/TEMP_LNU/write/"; //custom address at your PC
 
     // OP codes
@@ -283,7 +283,8 @@ public class TFTPServer {
                 if (fileInputStream.available() == 0) {
                 }
                 //while (fileInputStream.available() >= 0 && System.currentTimeMillis() - heartBeat < timeOut) {
-                while (fileInputStream.available() > 0 && System.currentTimeMillis() - heartBeat < timeOut) {
+                while (fileInputStream.available() >= 0 && System.currentTimeMillis() - heartBeat < timeOut) {
+                    //Also includes empty files
                     int lengthRead = -1;
                     if (fileInputStream.available() == 0) {
                         lengthRead = 0;
