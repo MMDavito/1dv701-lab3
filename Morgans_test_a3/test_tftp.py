@@ -5,13 +5,12 @@ import pytest
 @pytest.fixture(scope="module")
 def client():
     import tftpclient
-    return tftpclient.TFTPClient(('localhost', 4970), '/home/david/LNU/1dv701/1dv701-lab3/SERVER_FILES/read_files/')
-#    return tftpclient.TFTPClient(('localhost', 4970), '/home/david/LNU/1dv701/1dv701-lab3/SERVER_FILES/written_files/')#UNCOMMENT THIS TO PASS get or put
+    return tftpclient.TFTPClient(('localhost', 4970), '/home/david/LNU/1dv701/1dv701-lab3/SERVER_FILES/ReadWrite/')
 
 
 # Get existing 50 byte file
 def test_GSBSmall(client):
-    assert client.getFile(b'f50b.bin')
+    assert client.getFile(b'EmptyFIle.txt')#Is more intressting
 
 
 # Get existing 500 byte file

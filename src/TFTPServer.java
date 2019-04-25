@@ -9,7 +9,7 @@ import java.nio.ByteBuffer;
  * It is a matter of lack of time, I dont even have time to test paralillity of this program..
  */
 public class TFTPServer {
-    boolean DEBUG = true;
+    boolean DEBUG = false;
     public static final int TFTPPORT = 4970;
     public static final int BUFSIZE = 516;
     public static final int sizeOfDataField = 512;//2 byte opcode followed by 2 byte blockNum followed by [0,512] bytes of data
@@ -18,8 +18,9 @@ public class TFTPServer {
     public static final int maxShort = 65535;//maximal value for a short.
 
     public static final byte zeroByte = 0x00;
-    private final int timeOut = 120000; //will timeOut after 2 minutes, change if you are disconnected
-    public static final int timeOutSocket = 100;// 3 Seconds
+    private final int timeOut = 120000; //Connection will timeOut if nothing was done for 2 minutes,
+    // change if you are disconnected this is really stupid
+    public static final int timeOutSocket = 100;// 100 MilliSeconds
     public static final int maxNumRetrans = 5;//Maximally 5 retransmiisions
 
     /*
@@ -37,10 +38,8 @@ public class TFTPServer {
 
 //------------------------------------------------------------------
 
-    public static final String READDIR = "SERVER_FILES/read_files/"; //custom address at your PC
-    //public static final String READDIR = "/home/david/TEMP_LNU/read/"; //custom address at your PC
+    public static final String READDIR = "SERVER_FILES/ReadWrite/"; //custom address at your PC
     public static final String WRITEDIR = READDIR; //custom address at your PC
-    //public static final String WRITEDIR = "/home/david/TEMP_LNU/write/"; //custom address at your PC
 
     // OP codes
     public static final int OP_RRQ = 1;
@@ -102,7 +101,7 @@ public class TFTPServer {
             if (clientAddress == null)
                 continue;
 
-            System.out.println("Client: " + clientAddress);
+            if (DEBUG)System.out.println("Client: " + clientAddress);
 
             new Thread() {
                 public void run() {
@@ -118,7 +117,7 @@ public class TFTPServer {
                         if (!mode.toString().toLowerCase().equals("octet")) {
 
                             System.err.println("Are you from 1960 or something? You can only use octet, will send error");
-                            send_ERR(sendSocket, ERR_ACC_VIO, "Access Denied:\n" +
+                            send_ERR(sendSocket, ERR_ILLEGAL, "Access Denied:\n" +
                                     "You cant use netascii as trans_mode to this server");
                         } else {
 
@@ -129,14 +128,14 @@ public class TFTPServer {
                             // Read request
                             if (reqtype == OP_RRQ) {
                                 requestedFile.insert(0, READDIR);
-                                System.out.println("File to read: " + requestedFile);
+                                if (DEBUG) System.out.println("File to read: " + requestedFile);
 
                                 HandleRQ(sendSocket, requestedFile.toString(), OP_RRQ);
                             }
                             // Write request
                             else if (reqtype == OP_WRQ) {
                                 requestedFile.insert(0, WRITEDIR);
-                                System.out.println("File to write: " + requestedFile);
+                                if (DEBUG) System.out.println("File to write: " + requestedFile);
                                 HandleRQ(sendSocket, requestedFile.toString(), OP_WRQ);
                             } else {
                                 System.out.println("Failed to parse message to socket: " + socket.getInetAddress() + "\n" +
@@ -172,7 +171,7 @@ public class TFTPServer {
         }
         // Get client address and port from the packet
         InetSocketAddress inetSocketAddress = new InetSocketAddress(receivePacket.getAddress(), receivePacket.getPort());
-        System.out.println("This is address from recive: " + inetSocketAddress.toString());
+        if (DEBUG)System.out.println("This is address from recive: " + inetSocketAddress.toString());
 
         return inetSocketAddress;
     }
@@ -218,7 +217,8 @@ public class TFTPServer {
                 index++;
             }
         }
-        System.out.println("REQUESTED: " + opcode + requestedFile.toString() + mode.toString());
+        if (DEBUG)System.out.println("REQUESTED: OP:" + opcode +", For file: "
+                + requestedFile.toString() +", Using mode: "+ mode.toString());
         return opcode;
     }
 
@@ -230,7 +230,6 @@ public class TFTPServer {
      * @param opcode        (RRQ or WRQ)
      */
     private void HandleRQ(DatagramSocket sendSocket, String requestedFile, int opcode) {
-        System.out.println("Handeling here");
 
         if (opcode == OP_RRQ) {
             // See "TFTP Formats" in TFTP specification for the DATA and ACK packet contents
@@ -258,13 +257,15 @@ public class TFTPServer {
      * Errors be handled in this method? and redelayed to "send_error()"? Yes they are.
      */
     private boolean send_DATA_receive_ACK(DatagramSocket datagramSocket, String requestedFile) {
-        System.out.println("Replying with data to:");
-        System.out.println(datagramSocket.getInetAddress() + ", Using port: " + datagramSocket.getPort());
+        if (DEBUG) {
+            System.out.println("Replying with data to:");
+            System.out.println(datagramSocket.getInetAddress() + ", Using port: " + datagramSocket.getPort());
+        }
         boolean allPacketsSent = false;
 
         int blockNum = 1;
         File file = new File(requestedFile);
-        System.out.println("FilePath: " + file.getAbsolutePath());
+        if (DEBUG) System.out.println("FilePath: " + file.getAbsolutePath());
         FileInputStream fileInputStream = null;
         byte[] returnBuff = new byte[BUFSIZE];
         byte[] buf = new byte[sizeOfDataField];
@@ -282,16 +283,16 @@ public class TFTPServer {
                 fileInputStream = new FileInputStream(file);
                 if (fileInputStream.available() == 0) {
                 }
-                //while (fileInputStream.available() >= 0 && System.currentTimeMillis() - heartBeat < timeOut) {
+                //Commented
                 while (fileInputStream.available() >= 0 && System.currentTimeMillis() - heartBeat < timeOut) {
-                    //Also includes empty files
+                    //Also reads empty files
                     int lengthRead = -1;
                     if (fileInputStream.available() == 0) {
                         lengthRead = 0;
                     } else {
                         lengthRead = fileInputStream.read(buf);
                     }
-                    System.out.println("LENGTH READ GOOOD DAMN IT: " + lengthRead);
+                    if(DEBUG)System.out.println("LENGTH READ GOOOD DAMN IT: " + lengthRead);
                     if (lengthRead < 0) {
                         //Could be some kind of fileNotFound
                         //More likely i am just paranoid: TODO: FFS DONT BE SO SCARRED
@@ -418,7 +419,6 @@ public class TFTPServer {
             int opCode = getUnsignedShort(wrap);
             if (opCode != OP_ACK) {
                 if (opCode == OP_ERR) {
-                    System.err.println("It is probably an error? " + opCode);
                     StringBuilder errorMessage = new StringBuilder();
                     for (int i = wrap.position(); i < buf.length; i++) {
                         if (buf[i] == 0x00) {
@@ -436,7 +436,6 @@ public class TFTPServer {
 
             }
             int ackNum = getUnsignedShort(wrap);
-            System.out.println("Acknum: " + ackNum + " vs blocknum: " + blockNum);
             if (ackNum != blockNum) {
                 System.err.println("Numbers are not equal:\n" +
                         "Client Tried to acknowledge: " + ackNum + ", to dataBlock#" + blockNum);
@@ -485,6 +484,8 @@ public class TFTPServer {
             }
         } else {//File exists.
             if (!DEBUG) {//If not "DEBUG", do not overWrite file.               TODO remove debug
+                System.err.println("File: "+writeFile.getName()+", already exists." +
+                        "\nTo allow overwriting: set 'DEBUG' to true.");
                 send_ERR(datagramSocket, ERR_FILE_EXIST, "File already exists: \n"
                         + writeFile.getName());
                 return false;

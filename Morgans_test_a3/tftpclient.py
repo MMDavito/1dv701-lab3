@@ -157,7 +157,7 @@ class TFTPClient:
                 pkt = self.parsePacket(resp)
                 if pkt['op'] != OP.ERR:
                     raise ValueError(f'Expected OP.ERR got {pkt["op"]}.')
-                if pkt['code'] != 4 and pkt['code'] != 2:
+                if pkt['code'] != 4:
                     raise ValueError(f'Expected error code 4 got {pkt["code"]}.')
             except socket.timeout:
                 pass  # Ok to not respond to a bad request

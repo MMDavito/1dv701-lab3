@@ -16,8 +16,8 @@ public class TestShit {
         File originalFile = null;
         File writtenFile = null;
         try {
-            originalFile = new File("CLIENT_FILES/read_to/512Chars.txt");
-            writtenFile = new File("SERVER_FILES/read_files/512Chars.txt");
+            originalFile = new File("CLIENT_FILES/RW/512Chars.txt");
+            writtenFile = new File("SERVER_FILES/RW/512Chars.txt");
         } catch (Exception e) {
             e.printStackTrace();
         }
