@@ -80,6 +80,8 @@ class TFTPClient:
             ebn = 1
             while True:
                 resp, ca = sock.recvfrom(1024)
+                print("RESP:",resp)
+                print("CA:",ca)
 
                 pkt = self.parsePacket(resp)
                 if pkt['op'] != OP.DAT:

@@ -312,6 +312,8 @@ public class TFTPServer {
                     ByteBuffer wrap = ByteBuffer.wrap(returnBuff);
                     putUnsignedShort(wrap, OP_DAT);
                     putUnsignedShort(wrap, blockNum);
+                    System.out.println("SEND SOCK INET: "+datagramSocket.getInetAddress());
+                    System.out.println("Send Sock port: "+datagramSocket.getPort());
                     wrap.put(buf);
                     DatagramPacket sendPacket =
                             new DatagramPacket(returnBuff,
